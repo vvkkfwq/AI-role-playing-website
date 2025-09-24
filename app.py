@@ -11,6 +11,9 @@ from models import Character, MessageRole
 # Import audio processing utilities
 from audio_utils import audio_manager, AudioUI
 
+# Import speech-to-text service
+from stt_service import stt_service, STTResult
+
 try:
     from audiorecorder import audiorecorder
 
@@ -42,6 +45,15 @@ class AIRolePlayApp:
             st.session_state.selected_character = None
         if "current_conversation_id" not in st.session_state:
             st.session_state.current_conversation_id = None
+        # STT-related session state
+        if "stt_enabled" not in st.session_state:
+            st.session_state.stt_enabled = True
+        if "stt_language" not in st.session_state:
+            st.session_state.stt_language = "auto"
+        if "pending_stt_result" not in st.session_state:
+            st.session_state.pending_stt_result = None
+        if "show_stt_editing" not in st.session_state:
+            st.session_state.show_stt_editing = False
 
     def init_audio_cleanup(self):
         """Initialize audio file cleanup on app start"""
@@ -132,6 +144,43 @@ class AIRolePlayApp:
 
                 st.markdown("---")
 
+                # STT Settings
+                st.markdown("### 🎤 语音识别设置")
+
+                # STT enable/disable
+                st.session_state.stt_enabled = st.toggle(
+                    "启用语音识别",
+                    value=st.session_state.stt_enabled,
+                    help="开启后录音将自动转换为文字"
+                )
+
+                if st.session_state.stt_enabled:
+                    # Language selection
+                    language_options = {
+                        "自动检测": "auto",
+                        "中文": "zh",
+                        "English": "en"
+                    }
+
+                    selected_lang = st.selectbox(
+                        "识别语言",
+                        options=list(language_options.keys()),
+                        index=list(language_options.values()).index(st.session_state.stt_language)
+                    )
+                    st.session_state.stt_language = language_options[selected_lang]
+
+                    # Show STT statistics
+                    stt_stats = stt_service.stats_manager.get_statistics_summary()
+                    if "total_requests" in stt_stats and stt_stats["total_requests"] > 0:
+                        with st.expander("📊 识别统计"):
+                            st.metric("总请求数", stt_stats["total_requests"])
+                            st.metric("成功率", f"{stt_stats['success_rate']}%")
+                            st.metric("平均准确度", f"{stt_stats['average_confidence']}%")
+                            if stt_stats["correction_rate"] > 0:
+                                st.metric("用户修正率", f"{stt_stats['correction_rate']}%")
+
+                st.markdown("---")
+
                 # Action buttons
                 col1, col2 = st.columns(2)
                 with col1:
@@ -215,13 +264,36 @@ class AIRolePlayApp:
         self.render_input_section(character)
 
     def render_audio_message(self, audio_metadata: Dict[str, Any], content: str):
-        """Render an audio message with playback controls"""
+        """Render an audio message with playback controls and STT results"""
         st.markdown(
             f"🎤 **语音消息** ({audio_manager.format_duration(audio_metadata.get('duration', 0))})"
         )
 
-        # Show transcription if available
-        if content and content != "[音频消息]":
+        # Show STT results if available
+        stt_result = audio_metadata.get("stt_result")
+        if stt_result:
+            confidence = stt_result.get("confidence", 0) * 100
+            method = stt_result.get("method", "unknown")
+            language = stt_result.get("language", "auto")
+
+            # Show transcription with confidence indicator
+            confidence_color = "green" if confidence > 80 else "orange" if confidence > 60 else "red"
+            st.markdown(
+                f"🔤 **识别结果** ({method}, {language}, "
+                f"<span style='color:{confidence_color}'>{confidence:.1f}%</span>):",
+                unsafe_allow_html=True
+            )
+
+            if content and content != "[音频消息]":
+                st.markdown(f"*{content}*")
+            else:
+                st.markdown("*无法识别音频内容*")
+
+            # Show processing time if available
+            if "processing_time" in stt_result:
+                st.caption(f"处理时间: {stt_result['processing_time']:.1f}秒")
+
+        elif content and content != "[音频消息]":
             st.markdown(f"*转录文本:* {content}")
 
         # Audio playback
@@ -275,12 +347,23 @@ class AIRolePlayApp:
                                 except Exception:
                                     st.warning("音频预览不可用")
 
-                                # Send audio button
-                                if st.button("📤 发送语音", type="primary"):
-                                    self.process_user_message(
-                                        "[音频消息]", audio, character
-                                    )
-                                    st.rerun()
+                                # STT processing and send buttons
+                                col_stt, col_send = st.columns(2)
+
+                                with col_stt:
+                                    if st.session_state.stt_enabled and st.button("🔤 转文字", help="使用语音识别转换为文字"):
+                                        self.process_stt_conversion(audio, character)
+                                        st.rerun()
+
+                                with col_send:
+                                    if st.button("📤 发送语音", type="primary"):
+                                        if st.session_state.stt_enabled:
+                                            # Process with STT
+                                            self.process_user_message_with_stt(audio, character)
+                                        else:
+                                            # Send as audio message only
+                                            self.process_user_message("[音频消息]", audio, character)
+                                        st.rerun()
                             else:
                                 st.error(f"音频验证失败: {error_msg}")
 
@@ -288,6 +371,10 @@ class AIRolePlayApp:
             st.warning(
                 "⚠️ 语音录制功能不可用。请安装: pip install streamlit-audiorecorder"
             )
+
+        # STT Results Editing Interface
+        if st.session_state.pending_stt_result and st.session_state.show_stt_editing:
+            self.render_stt_editing_interface(character)
 
         # Process text input
         if text_prompt:
@@ -301,6 +388,263 @@ class AIRolePlayApp:
             return True  # Let the audiorecorder component handle the HTTPS requirement
         except Exception:
             return False
+
+    def process_stt_conversion(self, audio_segment, character: Character = None):
+        """Process STT conversion and show editing interface"""
+        with st.spinner("正在识别语音..."):
+            # Get character context for better STT accuracy
+            prompt = None
+            if character:
+                prompt = f"角色对话: {character.name} - {character.title}"
+
+            # Perform STT
+            stt_result = stt_service.transcribe_audio(
+                audio_segment,
+                language=st.session_state.stt_language,
+                prompt=prompt
+            )
+
+            # Store results in session state
+            st.session_state.pending_stt_result = {
+                "stt_result": stt_result,
+                "audio_segment": audio_segment,
+                "character": character,
+                "original_text": stt_result.text,
+                "edited_text": stt_result.text
+            }
+            st.session_state.show_stt_editing = True
+
+        # Show result
+        if stt_result.error:
+            st.error(f"语音识别失败: {stt_result.error}")
+        else:
+            st.success(f"识别完成! 准确度: {stt_result.confidence*100:.1f}%")
+
+    def render_stt_editing_interface(self, character: Character):
+        """Render interface for editing STT results"""
+        st.markdown("### ✏️ 编辑识别结果")
+
+        pending = st.session_state.pending_stt_result
+        if not pending:
+            return
+
+        stt_result = pending["stt_result"]
+
+        # Show original result with confidence
+        confidence = stt_result.confidence * 100
+        confidence_color = "green" if confidence > 80 else "orange" if confidence > 60 else "red"
+
+        st.markdown(
+            f"**原识别结果** (准确度: <span style='color:{confidence_color}'>{confidence:.1f}%</span>):",
+            unsafe_allow_html=True
+        )
+        st.info(stt_result.text if stt_result.text else "无法识别音频内容")
+
+        # Editable text area
+        edited_text = st.text_area(
+            "编辑文本:",
+            value=pending["edited_text"],
+            height=100,
+            help="您可以修正识别错误的文字"
+        )
+
+        # Update edited text in session state
+        st.session_state.pending_stt_result["edited_text"] = edited_text
+
+        # Action buttons
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            if st.button("✅ 发送消息", type="primary"):
+                # Send the edited text as message
+                self.send_stt_message(edited_text, pending, user_edited=(edited_text != stt_result.text))
+                st.rerun()
+
+        with col2:
+            if st.button("🔄 重新识别"):
+                # Re-run STT with different settings
+                with st.spinner("重新识别中..."):
+                    new_result = stt_service.transcribe_audio(
+                        pending["audio_segment"],
+                        language="auto",  # Try auto-detection
+                        use_fallback_on_error=True
+                    )
+                    st.session_state.pending_stt_result["stt_result"] = new_result
+                    st.session_state.pending_stt_result["edited_text"] = new_result.text
+                st.rerun()
+
+        with col3:
+            if st.button("📤 仅发语音"):
+                # Send as audio message without text
+                self.send_stt_message("[音频消息]", pending, user_edited=False)
+                st.rerun()
+
+        with col4:
+            if st.button("❌ 取消"):
+                # Clear pending STT result
+                st.session_state.pending_stt_result = None
+                st.session_state.show_stt_editing = False
+                st.rerun()
+
+        # User feedback section
+        st.markdown("---")
+        st.markdown("**反馈识别质量** (帮助改进服务):")
+
+        col_rating1, col_rating2 = st.columns([1, 2])
+
+        with col_rating1:
+            rating = st.select_slider(
+                "满意度",
+                options=[1, 2, 3, 4, 5],
+                value=3,
+                format_func=lambda x: "⭐" * x
+            )
+
+        with col_rating2:
+            if st.button("提交评分"):
+                stt_service.stats_manager.record_user_satisfaction(rating)
+                st.success("感谢您的反馈!")
+
+    def send_stt_message(self, text_content: str, pending_data: dict, user_edited: bool = False):
+        """Send message with STT metadata"""
+        stt_result = pending_data["stt_result"]
+        audio_segment = pending_data["audio_segment"]
+        character = pending_data["character"]
+
+        # Save audio file
+        audio_metadata = audio_manager.save_audio(
+            audio_segment,
+            conversation_id=st.session_state.current_conversation_id,
+        )
+
+        # Add STT result to audio metadata
+        if audio_metadata:
+            # Convert STTResult to dict for JSON serialization
+            stt_dict = {
+                "text": stt_result.text,
+                "confidence": stt_result.confidence,
+                "language": stt_result.language,
+                "duration": stt_result.duration,
+                "method": stt_result.method,
+                "processing_time": stt_result.processing_time,
+                "user_edited": user_edited
+            }
+            audio_metadata["stt_result"] = stt_dict
+
+        # Create message data
+        message_data = {
+            "role": "user",
+            "content": text_content,
+            "metadata": {"audio": audio_metadata} if audio_metadata else {}
+        }
+
+        # Record STT statistics
+        stt_service.stats_manager.record_request(stt_result, user_edited)
+
+        # Add to messages and process
+        st.session_state.messages.append(message_data)
+
+        # Generate assistant response
+        if character and text_content != "[音频消息]":
+            with st.chat_message("assistant", avatar=character.avatar_emoji):
+                with st.spinner(f"{character.name}正在思考..."):
+                    response = self.generate_response(st.session_state.messages, character)
+                st.markdown(response)
+
+            st.session_state.messages.append({"role": "assistant", "content": response})
+
+        # Clear pending STT result
+        st.session_state.pending_stt_result = None
+        st.session_state.show_stt_editing = False
+
+        # Auto-save conversation
+        if len(st.session_state.messages) % 6 == 0:
+            self.save_current_conversation()
+
+    def process_user_message_with_stt(self, audio_segment, character: Character = None):
+        """Process audio message with automatic STT conversion"""
+        with st.spinner("正在识别语音..."):
+            # Get character context for better STT accuracy
+            prompt = None
+            if character:
+                prompt = f"角色对话: {character.name} - {character.title}"
+
+            # Determine if we should process long audio in chunks
+            duration_seconds = len(audio_segment) / 1000.0
+
+            if duration_seconds > 30:  # Long audio
+                stt_result = stt_service.process_long_audio(
+                    audio_segment,
+                    language=st.session_state.stt_language,
+                    prompt=prompt
+                )
+            else:
+                stt_result = stt_service.transcribe_audio(
+                    audio_segment,
+                    language=st.session_state.stt_language,
+                    prompt=prompt
+                )
+
+        # Handle STT result
+        if stt_result.error:
+            st.error(f"语音识别失败: {stt_result.error}")
+            # Fall back to audio-only message
+            self.process_user_message("[音频消息]", audio_segment, character)
+        else:
+            # Use recognized text or fallback to audio message
+            text_content = stt_result.text if stt_result.text else "[音频消息]"
+
+            # Save audio with STT metadata
+            audio_metadata = audio_manager.save_audio(
+                audio_segment,
+                conversation_id=st.session_state.current_conversation_id,
+            )
+
+            if audio_metadata:
+                # Add STT result to metadata
+                stt_dict = {
+                    "text": stt_result.text,
+                    "confidence": stt_result.confidence,
+                    "language": stt_result.language,
+                    "duration": stt_result.duration,
+                    "method": stt_result.method,
+                    "processing_time": stt_result.processing_time,
+                    "user_edited": False
+                }
+                audio_metadata["stt_result"] = stt_dict
+
+            # Create message
+            message_data = {
+                "role": "user",
+                "content": text_content,
+                "metadata": {"audio": audio_metadata} if audio_metadata else {}
+            }
+
+            # Record statistics
+            stt_service.stats_manager.record_request(stt_result, user_edited=False)
+
+            # Add to session and display
+            st.session_state.messages.append(message_data)
+
+            # Display user message
+            with st.chat_message("user"):
+                if audio_metadata:
+                    self.render_audio_message(audio_metadata, text_content)
+                else:
+                    st.markdown(text_content)
+
+            # Generate assistant response if we have text
+            if character and text_content != "[音频消息]":
+                with st.chat_message("assistant", avatar=character.avatar_emoji):
+                    with st.spinner(f"{character.name}正在思考..."):
+                        response = self.generate_response(st.session_state.messages, character)
+                    st.markdown(response)
+
+                st.session_state.messages.append({"role": "assistant", "content": response})
+
+            # Auto-save conversation
+            if len(st.session_state.messages) % 6 == 0:
+                self.save_current_conversation()
 
     def process_user_message(
         self, content: str, audio_segment=None, character: Character = None
@@ -393,11 +737,22 @@ class AIRolePlayApp:
                             duration_str = audio_manager.format_duration(
                                 audio_info.get("duration", 0)
                             )
-                            st.markdown(
-                                f"{role_icon} **{msg.role.value}:** 🎤 语音消息 ({duration_str})"
-                            )
+
+                            # Show STT info if available
+                            stt_info = audio_info.get("stt_result")
+                            if stt_info:
+                                confidence = stt_info.get("confidence", 0) * 100
+                                method = stt_info.get("method", "unknown")
+                                st.markdown(
+                                    f"{role_icon} **{msg.role.value}:** 🎤 语音消息 ({duration_str}, {method}, {confidence:.0f}%)"
+                                )
+                            else:
+                                st.markdown(
+                                    f"{role_icon} **{msg.role.value}:** 🎤 语音消息 ({duration_str})"
+                                )
+
                             if msg.content and msg.content != "[音频消息]":
-                                st.markdown(f"   *转录:* {msg.content}")
+                                st.markdown(f"   *内容:* {msg.content}")
                         else:
                             st.markdown(
                                 f"{role_icon} **{msg.role.value}:** {msg.content}"
