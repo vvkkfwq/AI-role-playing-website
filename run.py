@@ -26,7 +26,7 @@ def check_requirements():
         "streamlit": "streamlit",
         "openai": "openai",
         "python-dotenv": "dotenv",
-        "pydantic": "pydantic"
+        "pydantic": "pydantic",
     }
 
     missing_packages = []

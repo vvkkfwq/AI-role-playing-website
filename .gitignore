@@ -67,3 +67,4 @@ Thumbs.db
 # Cache
 .cache/
 .pytest_cache/
+CLAUDE.md
