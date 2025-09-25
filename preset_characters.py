@@ -40,9 +40,8 @@ def get_preset_characters():
         ],
         voice_config=VoiceConfig(
             provider="openai",
-            voice_id="echo",
-            speed=1.1,
-            pitch=1.2,
+            voice_id="echo",  # 年轻活力的男性声音，适合哈利波特
+            speed=1.1,        # 稍快的语速，体现年轻活力
             volume=0.9
         )
     )
@@ -83,9 +82,8 @@ def get_preset_characters():
         ],
         voice_config=VoiceConfig(
             provider="openai",
-            voice_id="onyx",
-            speed=0.9,
-            pitch=0.8,
+            voice_id="onyx",  # 深沉成熟的男性声音，适合苏格拉底的智慧
+            speed=0.9,        # 较慢的语速，体现思考的深度
             volume=0.85
         )
     )
@@ -126,9 +124,8 @@ def get_preset_characters():
         ],
         voice_config=VoiceConfig(
             provider="openai",
-            voice_id="fable",
-            speed=1.0,
-            pitch=1.0,
+            voice_id="fable",  # 温和友善的声音，适合爱因斯坦的学者气质
+            speed=1.0,         # 标准语速，平和稳重
             volume=0.9
         )
     )

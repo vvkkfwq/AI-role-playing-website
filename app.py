@@ -9,10 +9,13 @@ from database import DatabaseManager
 from models import Character, MessageRole
 
 # Import audio processing utilities
-from audio_utils import audio_manager, AudioUI
+from audio_utils import audio_manager, AudioUI, TTSPlaybackUI
 
 # Import speech-to-text service
 from stt_service import stt_service, STTResult
+
+# Import text-to-speech service
+from tts_service import tts_manager
 
 try:
     from audiorecorder import audiorecorder
@@ -54,6 +57,15 @@ class AIRolePlayApp:
             st.session_state.pending_stt_result = None
         if "show_stt_editing" not in st.session_state:
             st.session_state.show_stt_editing = False
+        # TTS-related session state
+        if "tts_enabled" not in st.session_state:
+            st.session_state.tts_enabled = True
+        if "tts_auto_play" not in st.session_state:
+            st.session_state.tts_auto_play = False
+        if "tts_model" not in st.session_state:
+            st.session_state.tts_model = "tts-1-hd"
+        if "tts_format" not in st.session_state:
+            st.session_state.tts_format = "mp3"
 
     def init_audio_cleanup(self):
         """Initialize audio file cleanup on app start"""
@@ -181,6 +193,49 @@ class AIRolePlayApp:
 
                 st.markdown("---")
 
+                # TTS Settings
+                st.markdown("### 🎙️ 语音合成设置")
+
+                # TTS enable/disable
+                st.session_state.tts_enabled = st.toggle(
+                    "启用语音合成",
+                    value=st.session_state.tts_enabled,
+                    help="开启后AI回复将生成语音"
+                )
+
+                if st.session_state.tts_enabled:
+                    # Auto-play option
+                    st.session_state.tts_auto_play = st.checkbox(
+                        "自动播放",
+                        value=st.session_state.tts_auto_play,
+                        help="AI回复后自动播放语音"
+                    )
+
+                    # Advanced TTS settings
+                    with st.expander("高级设置", expanded=False):
+                        st.session_state.tts_model = st.selectbox(
+                            "TTS模型",
+                            options=["tts-1-hd", "tts-1"],
+                            index=0 if st.session_state.tts_model == "tts-1-hd" else 1,
+                            help="tts-1-hd: 高质量, tts-1: 快速"
+                        )
+
+                        st.session_state.tts_format = st.selectbox(
+                            "音频格式",
+                            options=["mp3", "opus", "aac"],
+                            index=["mp3", "opus", "aac"].index(st.session_state.tts_format),
+                            help="不同格式的音质和大小有所差异"
+                        )
+
+                        # Voice preview button
+                        if st.button("🎵 试听角色声音"):
+                            self.play_character_voice_preview(selected_character)
+
+                    # Show cache management
+                    TTSPlaybackUI.show_cache_management()
+
+                st.markdown("---")
+
                 # Action buttons
                 col1, col2 = st.columns(2)
                 with col1:
@@ -259,6 +314,10 @@ class AIRolePlayApp:
                 elif role == "assistant":
                     with st.chat_message("assistant", avatar=character.avatar_emoji):
                         st.markdown(content)
+
+                        # Add TTS player if enabled
+                        if st.session_state.tts_enabled:
+                            self.render_tts_for_message(content, character, message.get("message_id"))
 
         # Input section with both text and audio options
         self.render_input_section(character)
@@ -548,8 +607,12 @@ class AIRolePlayApp:
         if character and text_content != "[音频消息]":
             with st.chat_message("assistant", avatar=character.avatar_emoji):
                 with st.spinner(f"{character.name}正在思考..."):
-                    response = self.generate_response(st.session_state.messages, character)
+                    response = self.generate_response_with_tts(st.session_state.messages, character)
                 st.markdown(response)
+
+                # Add TTS player if enabled
+                if st.session_state.tts_enabled:
+                    self.render_tts_for_message(response, character)
 
             st.session_state.messages.append({"role": "assistant", "content": response})
 
@@ -560,6 +623,78 @@ class AIRolePlayApp:
         # Auto-save conversation
         if len(st.session_state.messages) % 6 == 0:
             self.save_current_conversation()
+
+    def render_tts_for_message(self, text: str, character: Character, message_id: int = None):
+        """Render TTS audio player for assistant message"""
+        if not text or text.strip() == "":
+            return
+
+        # Create unique key for this message's TTS
+        tts_key = f"tts_{message_id}_{hash(text)}" if message_id else f"tts_{hash(text)}"
+
+        # Check if TTS audio already exists in session state
+        tts_cache_key = f"tts_audio_{tts_key}"
+
+        if tts_cache_key not in st.session_state:
+            # Generate TTS button
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                if st.button("🎵 生成语音", key=f"gen_{tts_key}"):
+                    with st.spinner("正在生成语音..."):
+                        tts_audio = tts_manager.generate_character_speech(
+                            text=text,
+                            character=character,
+                            show_progress=False,
+                            use_cache=True
+                        )
+                        st.session_state[tts_cache_key] = tts_audio
+                        st.rerun()
+        else:
+            # Display TTS player
+            tts_audio = st.session_state[tts_cache_key]
+            if tts_audio:
+                TTSPlaybackUI.show_tts_player(tts_audio, key_suffix=tts_key)
+
+    def play_character_voice_preview(self, character: Character):
+        """Play voice preview for character"""
+        with st.spinner("正在生成语音预览..."):
+            preview_audio = tts_manager.get_character_voice_preview(character)
+
+        if preview_audio:
+            st.success("语音预览生成成功！")
+            TTSPlaybackUI.show_voice_preview_player(
+                character.name,
+                character.voice_config.voice_id if character.voice_config else "alloy",
+                preview_audio
+            )
+        else:
+            st.error("语音预览生成失败")
+
+    def generate_response_with_tts(self, messages: List[Dict], character: Character) -> str:
+        """Generate response and optionally create TTS audio"""
+        try:
+            # Generate text response
+            response_text = self.generate_response(messages, character)
+
+            # Generate TTS if enabled and auto-play is on
+            if st.session_state.tts_enabled and st.session_state.tts_auto_play:
+                # Generate TTS in background
+                tts_audio = tts_manager.generate_character_speech(
+                    text=response_text,
+                    character=character,
+                    show_progress=False,
+                    use_cache=True
+                )
+
+                # Store in session state for immediate playback
+                if tts_audio:
+                    tts_key = f"tts_auto_{hash(response_text)}"
+                    st.session_state[f"tts_audio_{tts_key}"] = tts_audio
+
+            return response_text
+
+        except Exception as e:
+            return f"抱歉，我现在无法回应。错误：{str(e)}"
 
     def process_user_message_with_stt(self, audio_segment, character: Character = None):
         """Process audio message with automatic STT conversion"""
@@ -637,8 +772,12 @@ class AIRolePlayApp:
             if character and text_content != "[音频消息]":
                 with st.chat_message("assistant", avatar=character.avatar_emoji):
                     with st.spinner(f"{character.name}正在思考..."):
-                        response = self.generate_response(st.session_state.messages, character)
+                        response = self.generate_response_with_tts(st.session_state.messages, character)
                     st.markdown(response)
+
+                    # Add TTS player if enabled
+                    if st.session_state.tts_enabled:
+                        self.render_tts_for_message(response, character)
 
                 st.session_state.messages.append({"role": "assistant", "content": response})
 
@@ -686,10 +825,14 @@ class AIRolePlayApp:
             with st.chat_message("assistant", avatar=character.avatar_emoji):
                 with st.spinner(f"{character.name}正在思考..."):
                     # For audio messages, use the content as text for AI processing
-                    response = self.generate_response(
+                    response = self.generate_response_with_tts(
                         st.session_state.messages, character
                     )
                 st.markdown(response)
+
+                # Add TTS player if enabled
+                if st.session_state.tts_enabled:
+                    self.render_tts_for_message(response, character)
 
             st.session_state.messages.append({"role": "assistant", "content": response})
 

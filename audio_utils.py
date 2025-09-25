@@ -285,5 +285,211 @@ class AudioUI:
         return True
 
 
+class TTSPlaybackUI:
+    """UI components for TTS audio playback controls"""
+
+    @staticmethod
+    def show_tts_player(audio_metadata: Dict[str, Any], key_suffix: str = ""):
+        """
+        Display TTS audio player with controls
+
+        Args:
+            audio_metadata: Audio metadata from TTS service
+            key_suffix: Unique suffix for Streamlit widget keys
+        """
+        if not audio_metadata:
+            return
+
+        # Create columns for player layout
+        col1, col2, col3 = st.columns([2, 1, 1])
+
+        with col1:
+            # Audio file display
+            file_path = audio_metadata.get("file_path")
+            if file_path and os.path.exists(file_path):
+                st.audio(file_path, format="audio/mp3")
+            elif audio_metadata.get("content"):
+                # Display audio from content bytes
+                st.audio(audio_metadata["content"], format="audio/mp3")
+            else:
+                st.warning("音频文件不可用")
+
+        with col2:
+            # Audio info
+            TTSPlaybackUI.show_tts_info(audio_metadata)
+
+        with col3:
+            # Control buttons
+            if st.button("🔊 重播", key=f"replay_tts_{key_suffix}"):
+                st.rerun()
+
+            if audio_metadata.get("cached"):
+                cache_status = "💾 已缓存"
+                if audio_metadata.get("cache_hit"):
+                    cache_status += " (命中)"
+            else:
+                cache_status = "🆕 新生成"
+
+            st.caption(cache_status)
+
+    @staticmethod
+    def show_tts_info(audio_metadata: Dict[str, Any]):
+        """Display TTS audio information"""
+        if not audio_metadata:
+            return
+
+        size_kb = audio_metadata.get("size", 0) / 1024
+        voice_id = audio_metadata.get("voice_id", "未知")
+        model = audio_metadata.get("model", "未知")
+        speed = audio_metadata.get("speed", 1.0)
+
+        st.markdown(
+            f"""
+            <div style="font-size: 0.8em; color: #666;">
+            🎵 <strong>语音信息</strong><br/>
+            声音: {voice_id}<br/>
+            模型: {model}<br/>
+            语速: {speed}x<br/>
+            大小: {size_kb:.1f} KB
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    @staticmethod
+    def show_voice_preview_player(character_name: str, voice_id: str, preview_audio: Dict[str, Any]):
+        """Display voice preview player for character selection"""
+        st.markdown(f"**{character_name}** ({voice_id})")
+
+        if preview_audio:
+            # Show audio player
+            file_path = preview_audio.get("file_path")
+            if file_path and os.path.exists(file_path):
+                st.audio(file_path, format="audio/mp3")
+            elif preview_audio.get("content"):
+                st.audio(preview_audio["content"], format="audio/mp3")
+
+            # Show voice characteristics
+            TTSPlaybackUI.show_voice_characteristics(voice_id)
+        else:
+            st.warning("预览音频生成失败")
+
+    @staticmethod
+    def show_voice_characteristics(voice_id: str):
+        """Display voice characteristics description"""
+        characteristics = {
+            "echo": "🎭 年轻活力的男性声音，适合哈利波特",
+            "onyx": "🏛️ 深沉成熟的男性声音，适合苏格拉底",
+            "fable": "🧠 温和友善的声音，适合爱因斯坦",
+            "alloy": "⚖️ 平衡自然的中性声音",
+            "nova": "✨ 充满活力的女性声音",
+            "shimmer": "🌟 温柔甜美的女性声音"
+        }
+
+        desc = characteristics.get(voice_id, "🎵 标准语音")
+        st.caption(desc)
+
+    @staticmethod
+    def show_tts_settings_panel():
+        """Display TTS settings configuration panel"""
+        st.subheader("🎙️ 语音设置")
+
+        with st.expander("高级语音选项", expanded=False):
+            col1, col2 = st.columns(2)
+
+            with col1:
+                model = st.selectbox(
+                    "TTS模型",
+                    options=["tts-1-hd", "tts-1"],
+                    help="tts-1-hd: 高质量但较慢, tts-1: 快速但质量一般"
+                )
+
+                format_option = st.selectbox(
+                    "音频格式",
+                    options=["mp3", "opus", "aac", "flac"],
+                    help="mp3: 通用格式, opus: 高压缩, aac: 高质量, flac: 无损"
+                )
+
+            with col2:
+                use_cache = st.checkbox(
+                    "启用缓存",
+                    value=True,
+                    help="缓存生成的音频以提高性能"
+                )
+
+                auto_play = st.checkbox(
+                    "自动播放",
+                    value=False,
+                    help="AI回复后自动播放语音"
+                )
+
+        return {
+            "model": model,
+            "format": format_option,
+            "use_cache": use_cache,
+            "auto_play": auto_play
+        }
+
+    @staticmethod
+    def show_tts_status(is_generating: bool, message: str = ""):
+        """Display TTS generation status"""
+        if is_generating:
+            st.markdown(
+                f"""
+                <div style="color: #ff6b35; font-weight: bold; padding: 10px;
+                           background-color: #fff3e0; border-radius: 5px; margin: 10px 0;">
+                    🎙️ 正在生成语音... {message}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        else:
+            # Clear status
+            st.empty()
+
+    @staticmethod
+    def show_cache_management():
+        """Display cache management interface"""
+        st.subheader("💾 语音缓存管理")
+
+        try:
+            from tts_service import tts_manager
+            cache_info = tts_manager.tts_service.get_cache_info()
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                st.metric("缓存文件数", cache_info["total_files"])
+
+            with col2:
+                st.metric("缓存大小", f"{cache_info['total_size_mb']} MB")
+
+            with col3:
+                max_size = cache_info["max_cache_size_mb"]
+                usage_pct = (cache_info["total_size_mb"] / max_size * 100) if max_size > 0 else 0
+                st.metric("使用率", f"{usage_pct:.1f}%")
+
+            # Cache management buttons
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                if st.button("🗑️ 清空缓存"):
+                    cleared = tts_manager.tts_service.clear_cache()
+                    st.success(f"已清空 {cleared} 个缓存文件")
+                    st.rerun()
+
+            with col2:
+                if st.button("🧹 清理过期文件"):
+                    tts_manager.tts_service._cleanup_cache()
+                    st.success("已清理过期文件")
+                    st.rerun()
+
+            with col3:
+                st.caption(f"缓存目录: {cache_info['cache_dir']}")
+
+        except ImportError:
+            st.error("TTS服务未正确初始化")
+
+
 # Singleton instance for global use
 audio_manager = AudioManager()
