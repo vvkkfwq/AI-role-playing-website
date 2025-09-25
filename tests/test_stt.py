@@ -26,7 +26,7 @@ except ImportError:
     print("❌ pydub not available. Please install with: pip install pydub")
     sys.exit(1)
 
-from stt_service import (
+from services.stt_service import (
     stt_service,
     ComprehensiveSTTService,
     AudioPreprocessor,
@@ -165,7 +165,7 @@ class STTTester:
             assert isinstance(summary, dict)
 
             # Create mock STT result
-            from stt_service import STTResult
+            from services.stt_service import STTResult
             mock_result = STTResult(
                 text="test transcription",
                 confidence=0.85,

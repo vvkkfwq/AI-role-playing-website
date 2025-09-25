@@ -1,21 +1,29 @@
+import sys
+import os
+from pathlib import Path
+
+# Add project root to path if not already there
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import streamlit as st
 from openai import OpenAI
-import os
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 
 # Import our enhanced database and models
-from database import DatabaseManager
-from models import Character, MessageRole
+from app.database import DatabaseManager
+from app.models import Character, MessageRole
 
 # Import audio processing utilities
-from audio_utils import audio_manager, AudioUI, TTSPlaybackUI
+from services.audio_utils import audio_manager, AudioUI, TTSPlaybackUI
 
 # Import speech-to-text service
-from stt_service import stt_service, STTResult
+from services.stt_service import stt_service, STTResult
 
 # Import text-to-speech service
-from tts_service import tts_manager
+from services.tts_service import tts_manager
 
 try:
     from audiorecorder import audiorecorder

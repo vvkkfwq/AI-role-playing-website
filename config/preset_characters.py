@@ -1,5 +1,5 @@
-from models import CharacterCreate, VoiceConfig
-from database import DatabaseManager
+from app.models import CharacterCreate, VoiceConfig
+from app.database import DatabaseManager
 
 
 def get_preset_characters():
