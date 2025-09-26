@@ -16,8 +16,9 @@ import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Add current directory to path for imports
-sys.path.append(str(Path(__file__).parent))
+# Add project root directory to path for imports
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
 try:
     from pydub import AudioSegment
