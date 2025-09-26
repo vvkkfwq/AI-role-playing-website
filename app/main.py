@@ -251,15 +251,6 @@ class AIRolePlayApp:
                     )
                     st.session_state.stt_language = language_options[selected_lang]
 
-                    # Show STT statistics
-                    stt_stats = stt_service.stats_manager.get_statistics_summary()
-                    if "total_requests" in stt_stats and stt_stats["total_requests"] > 0:
-                        with st.expander("📊 识别统计"):
-                            st.metric("总请求数", stt_stats["total_requests"])
-                            st.metric("成功率", f"{stt_stats['success_rate']}%")
-                            st.metric("平均准确度", f"{stt_stats['average_confidence']}%")
-                            if stt_stats["correction_rate"] > 0:
-                                st.metric("用户修正率", f"{stt_stats['correction_rate']}%")
 
                 st.markdown("---")
 
@@ -422,26 +413,16 @@ class AIRolePlayApp:
         # Show STT results if available
         stt_result = audio_metadata.get("stt_result")
         if stt_result:
-            confidence = stt_result.get("confidence", 0) * 100
             method = stt_result.get("method", "unknown")
             language = stt_result.get("language", "auto")
 
-            # Show transcription with confidence indicator
-            confidence_color = "green" if confidence > 80 else "orange" if confidence > 60 else "red"
-            st.markdown(
-                f"🔤 **识别结果** ({method}, {language}, "
-                f"<span style='color:{confidence_color}'>{confidence:.1f}%</span>):",
-                unsafe_allow_html=True
-            )
+            # Show transcription
+            st.markdown(f"🔤 **识别结果** ({method}, {language}):")
 
             if content and content != "[音频消息]":
                 st.markdown(f"*{content}*")
             else:
                 st.markdown("*无法识别音频内容*")
-
-            # Show processing time if available
-            if "processing_time" in stt_result:
-                st.caption(f"处理时间: {stt_result['processing_time']:.1f}秒")
 
         elif content and content != "[音频消息]":
             st.markdown(f"*转录文本:* {content}")
@@ -580,9 +561,8 @@ class AIRolePlayApp:
             # Record statistics
             stt_service.stats_manager.record_request(stt_result, user_edited=False)
 
-            # Show success message with confidence
-            confidence = stt_result.confidence * 100
-            st.success(f"语音识别成功! 准确度: {confidence:.1f}%")
+            # Show success message
+            st.success("语音识别成功!")
         else:
             st.warning("未能识别出音频内容")
 
@@ -726,10 +706,9 @@ class AIRolePlayApp:
                             # Show STT info if available
                             stt_info = audio_info.get("stt_result")
                             if stt_info:
-                                confidence = stt_info.get("confidence", 0) * 100
                                 method = stt_info.get("method", "unknown")
                                 st.markdown(
-                                    f"{role_icon} **{msg.role.value}:** 🎤 语音消息 ({duration_str}, {method}, {confidence:.0f}%)"
+                                    f"{role_icon} **{msg.role.value}:** 🎤 语音消息 ({duration_str}, {method})"
                                 )
                             else:
                                 st.markdown(
