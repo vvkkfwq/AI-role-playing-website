@@ -86,7 +86,11 @@ class AIRolePlayApp:
         """Clean up old processed audio IDs to prevent session state buildup"""
         try:
             # Find all processed_audio_ keys
-            audio_keys = [key for key in st.session_state.keys() if key.startswith("processed_audio_")]
+            audio_keys = [
+                key
+                for key in st.session_state.keys()
+                if key.startswith("processed_audio_")
+            ]
 
             # Keep only the most recent 50 processed audio IDs to prevent memory buildup
             if len(audio_keys) > 50:
@@ -114,7 +118,9 @@ class AIRolePlayApp:
         # Use the character's prompt_template directly
         return character.prompt_template
 
-    def generate_streaming_response(self, messages: List[Dict], character: Character, placeholder) -> str:
+    def generate_streaming_response(
+        self, messages: List[Dict], character: Character, placeholder
+    ) -> str:
         """Generate streaming response with live display in chat"""
         import time
 
@@ -132,7 +138,7 @@ class AIRolePlayApp:
                 messages=formatted_messages,
                 max_tokens=500,
                 temperature=0.8,
-                stream=True
+                stream=True,
             )
 
             # Handle streaming response
@@ -233,7 +239,7 @@ class AIRolePlayApp:
                 st.session_state.stt_enabled = st.toggle(
                     "启用语音识别",
                     value=st.session_state.stt_enabled,
-                    help="开启后录音将自动转换为文字"
+                    help="开启后录音将自动转换为文字",
                 )
 
                 if st.session_state.stt_enabled:
@@ -241,16 +247,17 @@ class AIRolePlayApp:
                     language_options = {
                         "自动检测": "auto",
                         "中文": "zh",
-                        "English": "en"
+                        "English": "en",
                     }
 
                     selected_lang = st.selectbox(
                         "识别语言",
                         options=list(language_options.keys()),
-                        index=list(language_options.values()).index(st.session_state.stt_language)
+                        index=list(language_options.values()).index(
+                            st.session_state.stt_language
+                        ),
                     )
                     st.session_state.stt_language = language_options[selected_lang]
-
 
                 st.markdown("---")
 
@@ -261,7 +268,7 @@ class AIRolePlayApp:
                 st.session_state.tts_enabled = st.toggle(
                     "启用语音合成",
                     value=st.session_state.tts_enabled,
-                    help="开启后AI回复将生成语音"
+                    help="开启后AI回复将生成语音",
                 )
 
                 if st.session_state.tts_enabled:
@@ -269,7 +276,7 @@ class AIRolePlayApp:
                     st.session_state.tts_auto_play = st.checkbox(
                         "自动播放",
                         value=st.session_state.tts_auto_play,
-                        help="AI回复后自动播放语音"
+                        help="AI回复后自动播放语音",
                     )
 
                     # Advanced TTS settings
@@ -278,14 +285,16 @@ class AIRolePlayApp:
                             "TTS模型",
                             options=["tts-1-hd", "tts-1"],
                             index=0 if st.session_state.tts_model == "tts-1-hd" else 1,
-                            help="tts-1-hd: 高质量, tts-1: 快速"
+                            help="tts-1-hd: 高质量, tts-1: 快速",
                         )
 
                         st.session_state.tts_format = st.selectbox(
                             "音频格式",
                             options=["mp3", "opus", "aac"],
-                            index=["mp3", "opus", "aac"].index(st.session_state.tts_format),
-                            help="不同格式的音质和大小有所差异"
+                            index=["mp3", "opus", "aac"].index(
+                                st.session_state.tts_format
+                            ),
+                            help="不同格式的音质和大小有所差异",
                         )
 
                         # Voice preview button
@@ -378,7 +387,9 @@ class AIRolePlayApp:
 
                         # Add TTS player if enabled
                         if st.session_state.tts_enabled:
-                            self.render_tts_for_message(content, character, message.get("message_id"))
+                            self.render_tts_for_message(
+                                content, character, message.get("message_id")
+                            )
 
             # Check if we need to generate an AI response
             if st.session_state.generating_response:
@@ -389,10 +400,14 @@ class AIRolePlayApp:
                     placeholder.markdown(f"🤔 {character.name}正在思考...")
 
                     # Generate streaming response (this will replace the thinking message)
-                    response = self.generate_streaming_response(st.session_state.messages, character, placeholder)
+                    response = self.generate_streaming_response(
+                        st.session_state.messages, character, placeholder
+                    )
 
                     # Add the response to session state and clear the generating flag
-                    st.session_state.messages.append({"role": "assistant", "content": response})
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": response}
+                    )
                     st.session_state.generating_response = False
 
                     # Auto-save conversation periodically
@@ -445,7 +460,7 @@ class AIRolePlayApp:
                 value=st.session_state.text_input_value,
                 key=f"message_input_{st.session_state.input_key}",
                 placeholder="输入文字或使用语音录制...",
-                label_visibility="collapsed"
+                label_visibility="collapsed",
             )
             # Update session state when text changes
             if text_value != st.session_state.text_input_value:
@@ -480,15 +495,21 @@ class AIRolePlayApp:
                             # Check if this audio has already been processed
                             if f"processed_audio_{audio_id}" not in st.session_state:
                                 # Validate audio
-                                is_valid, error_msg = audio_manager.validate_audio(audio)
+                                is_valid, error_msg = audio_manager.validate_audio(
+                                    audio
+                                )
 
                                 if is_valid:
                                     # Mark this audio as being processed to prevent reprocessing
-                                    st.session_state[f"processed_audio_{audio_id}"] = True
+                                    st.session_state[f"processed_audio_{audio_id}"] = (
+                                        True
+                                    )
 
                                     # Show audio info
                                     duration = len(audio) / 1000.0
-                                    st.info(f"⏱️ 录制时长: {audio_manager.format_duration(duration)} - 正在自动转换为文字...")
+                                    st.info(
+                                        f"⏱️ 录制时长: {audio_manager.format_duration(duration)} - 正在自动转换为文字..."
+                                    )
 
                                     # Automatically convert audio to text and add to input
                                     self.auto_convert_audio_to_text(audio, character)
@@ -501,12 +522,17 @@ class AIRolePlayApp:
         elif AUDIO_RECORDER_AVAILABLE and not st.session_state.stt_enabled:
             st.info("💡 在侧边栏启用语音识别以使用语音录制功能")
         elif not AUDIO_RECORDER_AVAILABLE:
-            st.warning("⚠️ 语音录制功能不可用。请安装: pip install streamlit-audiorecorder")
+            st.warning(
+                "⚠️ 语音录制功能不可用。请安装: pip install streamlit-audiorecorder"
+            )
 
         # Process text input when send button clicked or text is entered
         if send_clicked and st.session_state.text_input_value.strip():
             # Add user message to session
-            message_data = {"role": "user", "content": st.session_state.text_input_value.strip()}
+            message_data = {
+                "role": "user",
+                "content": st.session_state.text_input_value.strip(),
+            }
             st.session_state.messages.append(message_data)
 
             # Set flag to generate AI response
@@ -540,15 +566,11 @@ class AIRolePlayApp:
 
             if duration_seconds > 30:  # Long audio
                 stt_result = stt_service.process_long_audio(
-                    audio_segment,
-                    language=st.session_state.stt_language,
-                    prompt=prompt
+                    audio_segment, language=st.session_state.stt_language, prompt=prompt
                 )
             else:
                 stt_result = stt_service.transcribe_audio(
-                    audio_segment,
-                    language=st.session_state.stt_language,
-                    prompt=prompt
+                    audio_segment, language=st.session_state.stt_language, prompt=prompt
                 )
 
         # Handle STT result
@@ -566,15 +588,17 @@ class AIRolePlayApp:
         else:
             st.warning("未能识别出音频内容")
 
-
-
-    def render_tts_for_message(self, text: str, character: Character, message_id: int = None):
+    def render_tts_for_message(
+        self, text: str, character: Character, message_id: int = None
+    ):
         """Render TTS audio player for assistant message"""
         if not text or text.strip() == "":
             return
 
         # Create unique key for this message's TTS
-        tts_key = f"tts_{message_id}_{hash(text)}" if message_id else f"tts_{hash(text)}"
+        tts_key = (
+            f"tts_{message_id}_{hash(text)}" if message_id else f"tts_{hash(text)}"
+        )
 
         # Check if TTS audio already exists in session state
         tts_cache_key = f"tts_audio_{tts_key}"
@@ -589,7 +613,7 @@ class AIRolePlayApp:
                             text=text,
                             character=character,
                             show_progress=False,
-                            use_cache=True
+                            use_cache=True,
                         )
                         st.session_state[tts_cache_key] = tts_audio
                         st.rerun()
@@ -609,12 +633,14 @@ class AIRolePlayApp:
             TTSPlaybackUI.show_voice_preview_player(
                 character.name,
                 character.voice_config.voice_id if character.voice_config else "alloy",
-                preview_audio
+                preview_audio,
             )
         else:
             st.error("语音预览生成失败")
 
-    def generate_response_with_tts(self, messages: List[Dict], character: Character) -> str:
+    def generate_response_with_tts(
+        self, messages: List[Dict], character: Character
+    ) -> str:
         """Generate streaming response and optionally create TTS audio"""
         try:
             system_prompt = self.get_character_prompt(character)
@@ -626,7 +652,7 @@ class AIRolePlayApp:
                 messages=formatted_messages,
                 max_tokens=500,
                 temperature=0.8,
-                stream=True
+                stream=True,
             )
 
             # Handle streaming response
@@ -648,7 +674,7 @@ class AIRolePlayApp:
                     text=full_response,
                     character=character,
                     show_progress=False,
-                    use_cache=True
+                    use_cache=True,
                 )
 
                 # Store in session state for immediate playback
@@ -660,7 +686,6 @@ class AIRolePlayApp:
 
         except Exception as e:
             return f"抱歉，我现在无法回应。错误：{str(e)}"
-
 
     def render_conversations_history(self):
         """Render conversation history page"""
