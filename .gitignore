@@ -68,3 +68,5 @@ Thumbs.db
 .cache/
 .pytest_cache/
 CLAUDE.md
+tts_cache/
+audio_temp/

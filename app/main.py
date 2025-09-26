@@ -101,9 +101,21 @@ class AIRolePlayApp:
                 messages=formatted_messages,
                 max_tokens=500,
                 temperature=0.8,
+                stream=True
             )
 
-            return response.choices[0].message.content
+            # Handle streaming response
+            full_response = ""
+            placeholder = st.empty()
+
+            for chunk in response:
+                if chunk.choices[0].delta.content is not None:
+                    full_response += chunk.choices[0].delta.content
+                    placeholder.markdown(full_response + "▊")
+
+            # Remove cursor and display final response
+            placeholder.markdown(full_response)
+            return full_response
 
         except Exception as e:
             return f"抱歉，我现在无法回应。错误：{str(e)}"
@@ -679,16 +691,37 @@ class AIRolePlayApp:
             st.error("语音预览生成失败")
 
     def generate_response_with_tts(self, messages: List[Dict], character: Character) -> str:
-        """Generate response and optionally create TTS audio"""
+        """Generate streaming response and optionally create TTS audio"""
         try:
-            # Generate text response
-            response_text = self.generate_response(messages, character)
+            system_prompt = self.get_character_prompt(character)
+            formatted_messages = [{"role": "system", "content": system_prompt}]
+            formatted_messages.extend(messages)
+
+            response = self.client.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
+                messages=formatted_messages,
+                max_tokens=500,
+                temperature=0.8,
+                stream=True
+            )
+
+            # Handle streaming response
+            full_response = ""
+            placeholder = st.empty()
+
+            for chunk in response:
+                if chunk.choices[0].delta.content is not None:
+                    full_response += chunk.choices[0].delta.content
+                    placeholder.markdown(full_response + "▊")
+
+            # Remove cursor and display final response
+            placeholder.markdown(full_response)
 
             # Generate TTS if enabled and auto-play is on
             if st.session_state.tts_enabled and st.session_state.tts_auto_play:
                 # Generate TTS in background
                 tts_audio = tts_manager.generate_character_speech(
-                    text=response_text,
+                    text=full_response,
                     character=character,
                     show_progress=False,
                     use_cache=True
@@ -696,10 +729,10 @@ class AIRolePlayApp:
 
                 # Store in session state for immediate playback
                 if tts_audio:
-                    tts_key = f"tts_auto_{hash(response_text)}"
+                    tts_key = f"tts_auto_{hash(full_response)}"
                     st.session_state[f"tts_audio_{tts_key}"] = tts_audio
 
-            return response_text
+            return full_response
 
         except Exception as e:
             return f"抱歉，我现在无法回应。错误：{str(e)}"
