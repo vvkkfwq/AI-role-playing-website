@@ -449,46 +449,77 @@ class TTSPlaybackUI:
 
     @staticmethod
     def show_cache_management():
-        """Display cache management interface"""
-        st.subheader("💾 语音缓存管理")
-
+        """Display cache management interface with collapsible layout"""
         try:
-            from tts_service import tts_manager
+            from services.tts_service import tts_manager
             cache_info = tts_manager.tts_service.get_cache_info()
 
-            col1, col2, col3 = st.columns(3)
+            # Calculate summary info for expander title
+            total_files = cache_info["total_files"]
+            max_size = cache_info["max_cache_size_mb"]
+            usage_pct = (cache_info["total_size_mb"] / max_size * 100) if max_size > 0 else 0
 
-            with col1:
-                st.metric("缓存文件数", cache_info["total_files"])
+            # Create expander with summary in title
+            with st.expander(f"💾 缓存管理 ({total_files} 文件, {usage_pct:.1f}%)", expanded=False):
+                # Detailed metrics
+                col1, col2, col3 = st.columns(3)
 
-            with col2:
-                st.metric("缓存大小", f"{cache_info['total_size_mb']} MB")
+                with col1:
+                    st.metric("缓存文件数", total_files)
 
-            with col3:
-                max_size = cache_info["max_cache_size_mb"]
-                usage_pct = (cache_info["total_size_mb"] / max_size * 100) if max_size > 0 else 0
-                st.metric("使用率", f"{usage_pct:.1f}%")
+                with col2:
+                    st.metric("缓存大小", f"{cache_info['total_size_mb']} MB")
 
-            # Cache management buttons
-            col1, col2, col3 = st.columns(3)
+                with col3:
+                    st.metric("使用率", f"{usage_pct:.1f}%")
 
-            with col1:
-                if st.button("🗑️ 清空缓存"):
-                    cleared = tts_manager.tts_service.clear_cache()
-                    st.success(f"已清空 {cleared} 个缓存文件")
-                    st.rerun()
+                st.caption(f"📁 缓存目录: {cache_info['cache_dir']}")
+                st.caption(f"⏱️ 缓存期限: {cache_info['cache_duration_days']} 天")
 
-            with col2:
-                if st.button("🧹 清理过期文件"):
-                    tts_manager.tts_service._cleanup_cache()
-                    st.success("已清理过期文件")
-                    st.rerun()
+                st.markdown("---")
 
-            with col3:
-                st.caption(f"缓存目录: {cache_info['cache_dir']}")
+                # Management buttons with better layout
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    if st.button("🧹 清理过期文件", use_container_width=True):
+                        tts_manager.tts_service._cleanup_cache()
+                        st.success("✅ 已清理过期文件")
+                        st.rerun()
+
+                with col2:
+                    # Clear cache with confirmation
+                    if "confirm_clear_cache" not in st.session_state:
+                        st.session_state.confirm_clear_cache = False
+
+                    if not st.session_state.confirm_clear_cache:
+                        if st.button("🗑️ 清空缓存", use_container_width=True):
+                            st.session_state.confirm_clear_cache = True
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ 确定要清空所有缓存文件吗？")
+                        col_confirm, col_cancel = st.columns(2)
+
+                        with col_confirm:
+                            if st.button("✅ 确认", type="primary", use_container_width=True):
+                                cleared = tts_manager.tts_service.clear_cache()
+                                st.success(f"✅ 已清空 {cleared} 个缓存文件")
+                                st.session_state.confirm_clear_cache = False
+                                st.rerun()
+
+                        with col_cancel:
+                            if st.button("❌ 取消", use_container_width=True):
+                                st.session_state.confirm_clear_cache = False
+                                st.rerun()
 
         except ImportError:
-            st.error("TTS服务未正确初始化")
+            with st.expander("💾 缓存管理 (服务未初始化)", expanded=False):
+                st.error("❌ TTS服务未正确初始化")
+                st.info("💡 请检查OpenAI API密钥配置")
+        except Exception as e:
+            with st.expander("💾 缓存管理 (加载失败)", expanded=False):
+                st.error(f"❌ 加载缓存信息失败: {str(e)}")
+                st.info("💡 请检查TTS服务配置")
 
 
 # Singleton instance for global use
