@@ -5,3 +5,4 @@ pydantic>=2.5.0
 streamlit-audiorecorder>=0.0.5
 pydub>=0.25.1
 SpeechRecognition>=3.10.0
+typing-extensions>=4.0.0

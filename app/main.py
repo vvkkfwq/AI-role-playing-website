@@ -11,6 +11,7 @@ import streamlit as st
 from openai import OpenAI
 from typing import List, Dict, Any
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Import our enhanced database and models
 from app.database import DatabaseManager
@@ -24,6 +25,10 @@ from services.stt_service import stt_service, STTResult
 
 # Import text-to-speech service
 from services.tts_service import tts_manager
+
+# Import skill system
+from skills.core.manager import SkillManager
+from skills.built_in.skill_registry_setup import initialize_skill_system
 
 try:
     from audiorecorder import audiorecorder
@@ -41,6 +46,7 @@ class AIRolePlayApp:
         self.init_openai()
         self.init_session_state()
         self.init_audio_cleanup()
+        self.init_skill_system()
 
     def init_openai(self):
         api_key = os.getenv("OPENAI_API_KEY")
@@ -82,6 +88,30 @@ class AIRolePlayApp:
         # Clean up old processed audio IDs to prevent memory buildup
         self._cleanup_processed_audio_ids()
 
+    def init_skill_system(self):
+        """初始化技能系统"""
+        try:
+            # 初始化技能注册表和配置
+            self.character_skill_configs = initialize_skill_system()
+
+            # 创建技能管理器
+            self.skill_manager = SkillManager()
+
+            # 初始化技能系统（异步方法需要在运行时调用）
+            # 这里只是创建实例，具体初始化在第一次使用时进行
+
+            # 加载角色技能配置到管理器
+            for character_id, configs in self.character_skill_configs.items():
+                self.skill_manager.load_character_skill_configs(character_id, configs)
+
+            st.session_state.skill_system_ready = True
+            print("✅ 技能系统初始化完成")
+
+        except Exception as e:
+            print(f"❌ 技能系统初始化失败: {e}")
+            st.session_state.skill_system_ready = False
+            # 如果技能系统初始化失败，应用仍可正常运行，只是不使用技能增强
+
     def _cleanup_processed_audio_ids(self):
         """Clean up old processed audio IDs to prevent session state buildup"""
         try:
@@ -118,12 +148,122 @@ class AIRolePlayApp:
         # Use the character's prompt_template directly
         return character.prompt_template
 
+    async def generate_response_with_skills(
+        self, user_input: str, character: Character, messages: List[Dict],
+        conversation_id: int = None, message_id: int = None
+    ) -> str:
+        """使用技能系统生成增强的响应"""
+        import asyncio
+
+        if not getattr(st.session_state, 'skill_system_ready', False):
+            # 技能系统未就绪，回退到原始方法
+            return self.generate_response(messages, character)
+
+        try:
+            # 初始化技能系统（如果还未初始化）
+            if not hasattr(self.skill_manager, '_initialized'):
+                await self.skill_manager.initialize()
+                self.skill_manager._initialized = True
+
+            # 构建角色信息
+            character_info = {
+                "id": character.id,
+                "name": character.name,
+                "title": character.title,
+                "personality": character.personality,
+                "skills": character.skills
+            }
+
+            # 构建对话历史
+            conversation_history = []
+            for msg in messages[-10:]:  # 最近10条消息作为历史
+                conversation_history.append({
+                    "role": msg["role"],
+                    "content": msg["content"],
+                    "timestamp": datetime.now().isoformat()
+                })
+
+            # 使用技能系统处理用户输入
+            skill_results = await self.skill_manager.process_user_input(
+                user_input=user_input,
+                character_id=character.id,
+                conversation_id=conversation_id,
+                message_id=message_id,
+                character_info=character_info,
+                conversation_history=conversation_history,
+                session_id=st.session_state.get('session_id', 'default'),
+                execution_strategy="adaptive"
+            )
+
+            # 如果有技能结果，使用技能增强的响应
+            if skill_results:
+                best_result = max(skill_results, key=lambda r: r.confidence_score)
+                if best_result.generated_content and best_result.quality_score > 0.6:
+                    return best_result.generated_content
+
+            # 如果没有高质量的技能结果，回退到原始方法
+            return self.generate_response(messages, character)
+
+        except Exception as e:
+            print(f"技能系统响应生成失败: {e}")
+            # 发生错误时回退到原始方法
+            return self.generate_response(messages, character)
+
     def generate_streaming_response(
         self, messages: List[Dict], character: Character, placeholder
     ) -> str:
         """Generate streaming response with live display in chat"""
         import time
+        import asyncio
 
+        # 获取最新的用户消息
+        user_input = ""
+        if messages and messages[-1]["role"] == "user":
+            user_input = messages[-1]["content"]
+
+        # 尝试使用技能系统
+        if getattr(st.session_state, 'skill_system_ready', False) and user_input:
+            try:
+                # 显示技能处理状态
+                placeholder.markdown("🤔 正在分析并调用相关技能...")
+
+                # 运行异步技能处理
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+                try:
+                    enhanced_response = loop.run_until_complete(
+                        self.generate_response_with_skills(
+                            user_input, character, messages,
+                            st.session_state.get('current_conversation_id'),
+                            None  # message_id 暂时为空，可以后续从数据库获取
+                        )
+                    )
+
+                    if enhanced_response and enhanced_response != self.generate_response(messages, character):
+                        # 技能系统生成了有效响应，进行流式显示
+                        placeholder.markdown("✨ 技能增强响应生成中...")
+                        time.sleep(0.5)
+
+                        # 模拟流式输出技能增强的响应
+                        full_response = ""
+                        for i, char in enumerate(enhanced_response):
+                            full_response += char
+                            if i % 3 == 0:  # 每3个字符更新一次，模拟打字效果
+                                placeholder.markdown(full_response + "▊")
+                                time.sleep(0.02)
+
+                        placeholder.markdown(full_response)
+                        return full_response
+
+                finally:
+                    loop.close()
+
+            except Exception as e:
+                print(f"技能系统流式响应失败: {e}")
+                # 继续使用原始方法
+
+        # 原始的流式响应方法
         try:
             system_prompt = self.get_character_prompt(character)
 
@@ -175,6 +315,51 @@ class AIRolePlayApp:
 
         except Exception as e:
             return f"抱歉，我现在无法回应。错误：{str(e)}"
+
+    def render_skill_system_status(self, character: Character):
+        """渲染技能系统状态"""
+        st.markdown("### ⚡ 智能技能系统")
+
+        # 系统状态指示器
+        skill_system_ready = getattr(st.session_state, 'skill_system_ready', False)
+
+        if skill_system_ready:
+            st.success("🟢 技能系统已启用")
+
+            # 显示可用技能
+            if hasattr(self, 'skill_manager'):
+                try:
+                    # 获取角色的技能建议
+                    suggestions = self.skill_manager.get_skill_suggestions(
+                        user_input="示例输入",
+                        character_id=character.id,
+                        max_suggestions=3
+                    )
+
+                    if suggestions:
+                        st.markdown("**可用智能技能:**")
+                        for suggestion in suggestions:
+                            confidence_icon = "🔥" if suggestion["confidence"] > 0.8 else "⭐" if suggestion["confidence"] > 0.6 else "💡"
+                            st.markdown(f"{confidence_icon} {suggestion['display_name']}")
+
+                    # 系统统计
+                    with st.expander("📊 系统状态", expanded=False):
+                        status = self.skill_manager.get_system_status()
+                        st.write(f"- 已注册技能: {status['registry']['total_skills']}")
+                        st.write(f"- 启用技能: {status['registry']['enabled_skills']}")
+                        st.write(f"- 活跃执行: {status['executor']['active_executions']}")
+
+                except Exception as e:
+                    st.warning(f"技能状态获取失败: {str(e)[:50]}...")
+
+        else:
+            st.warning("🟡 技能系统未就绪")
+            if st.button("🔄 重新初始化", help="重新初始化技能系统"):
+                try:
+                    self.init_skill_system()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"初始化失败: {e}")
 
     def render_sidebar(self):
         with st.sidebar:
@@ -229,6 +414,11 @@ class AIRolePlayApp:
                     if len(selected_character.skills) > 3:
                         skills_text += f" 等{len(selected_character.skills)}项技能"
                     st.markdown(f"*{skills_text}*")
+
+                st.markdown("---")
+
+                # Skill System Status
+                self.render_skill_system_status(selected_character)
 
                 st.markdown("---")
 
