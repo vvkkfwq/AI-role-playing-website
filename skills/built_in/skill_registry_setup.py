@@ -82,6 +82,14 @@ def setup_character_skill_configs():
                 weight=1.0,
                 threshold=0.5,
                 parameters={"story_style": "philosophical_parable"}
+            ),
+            "emotional_support": SkillConfig(
+                skill_name="emotional_support",
+                character_id=2,
+                weight=1.1,
+                threshold=0.4,
+                parameters={"support_style": "philosophical_comfort"},
+                personalization={"use_wisdom": True, "encourage_reflection": True}
             )
         },
 

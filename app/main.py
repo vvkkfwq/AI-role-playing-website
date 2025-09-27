@@ -316,6 +316,75 @@ class AIRolePlayApp:
         except Exception as e:
             return f"抱歉，我现在无法回应。错误：{str(e)}"
 
+    def render_character_skills(self, character: Character):
+        """渲染角色的智能技能"""
+        st.markdown("**🤖 智能技能:**")
+
+        # 获取角色的技能配置
+        character_skills = self._get_character_skill_configs(character.id)
+
+        if not character_skills:
+            st.markdown("*暂未配置智能技能*")
+            return
+
+        # 按权重排序技能
+        sorted_skills = sorted(character_skills.items(), key=lambda x: x[1].weight, reverse=True)
+
+        # 定义技能图标映射
+        skill_icons = {
+            "deep_questioning": "🤔",
+            "storytelling": "📖",
+            "emotional_support": "💝",
+            "analysis": "🔍"
+        }
+
+        # 定义技能显示名称和描述
+        skill_info = {
+            "deep_questioning": {
+                "name": "深度提问",
+                "description": "通过苏格拉底式提问引导深入思考，触发词：为什么、如何、原理、本质"
+            },
+            "storytelling": {
+                "name": "故事讲述",
+                "description": "讲述引人入胜的故事和经历，触发词：故事、经历、冒险、分享、讲述"
+            },
+            "emotional_support": {
+                "name": "情感支持",
+                "description": "提供情感支持和共情理解，触发词：难过、担心、焦虑、害怕、孤独"
+            },
+            "analysis": {
+                "name": "深度分析",
+                "description": "对复杂问题进行逻辑分析，触发词：分析、比较、评价、优缺点、原因"
+            }
+        }
+
+        # 渲染每个技能
+        for skill_name, skill_config in sorted_skills:
+            icon = skill_icons.get(skill_name, "⚡")
+            skill_data = skill_info.get(skill_name, {"name": skill_name, "description": "智能技能"})
+            display_name = skill_data["name"]
+            description = skill_data["description"]
+            stars = self._get_skill_stars(skill_config.weight)
+
+            # 创建带提示的技能展示
+            with st.container():
+                st.markdown(f"{icon} {display_name} {stars}", help=description)
+
+    def _get_character_skill_configs(self, character_id: int):
+        """获取角色的技能配置"""
+        if hasattr(self, 'character_skill_configs') and character_id in self.character_skill_configs:
+            return self.character_skill_configs[character_id]
+        return {}
+
+    def _get_skill_stars(self, weight: float) -> str:
+        """根据权重返回星级显示"""
+        if weight >= 1.5:
+            return "⭐⭐⭐"
+        elif weight >= 1.0:
+            return "⭐⭐"
+        else:
+            return "⭐"
+
     def render_skill_system_status(self, character: Character):
         """渲染技能系统状态"""
         st.markdown("### ⚡ 智能技能系统")
@@ -401,19 +470,14 @@ class AIRolePlayApp:
                 )
                 st.markdown(f"**{selected_character.title}**")
 
-                # Display personality traits
-                if selected_character.personality:
-                    st.markdown("**性格特征:**")
-                    for trait in selected_character.personality:
-                        st.markdown(f"• {trait}")
+                # Display AI skills
+                self.render_character_skills(selected_character)
 
-                # Display skills
-                if selected_character.skills:
-                    st.markdown("**技能:**")
-                    skills_text = ", ".join(selected_character.skills[:3])
-                    if len(selected_character.skills) > 3:
-                        skills_text += f" 等{len(selected_character.skills)}项技能"
-                    st.markdown(f"*{skills_text}*")
+                # Display personality traits (collapsed)
+                with st.expander("性格特征", expanded=False):
+                    if selected_character.personality:
+                        for trait in selected_character.personality:
+                            st.markdown(f"• {trait}")
 
                 st.markdown("---")
 
