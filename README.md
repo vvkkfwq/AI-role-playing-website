@@ -13,6 +13,9 @@
 - 🗄️ **数据库管理**: SQLite 数据库，支持完整的 CRUD 操作
 - 🎨 **个性化**: 每个角色都有独特的性格特征、技能和语音配置
 - 🚀 **智能缓存**: TTS 音频缓存和自动清理机制
+- 🧠 **AI 智能技能系统**: 动态技能匹配、意图识别和情感分析
+- 💝 **情感支持**: 智能情感识别和角色专属的情感支持回应
+- 🎯 **技能推荐**: 基于上下文的智能技能推荐引擎
 
 ## 🏗️ 项目结构
 
@@ -28,6 +31,25 @@ AI-role-playing-website/
 │   ├── stt_service.py    # 语音转文本服务（OpenAI Whisper）
 │   ├── tts_service.py    # 文本转语音服务（OpenAI TTS）
 │   └── __init__.py
+├── skills/               # AI智能技能系统
+│   ├── core/            # 技能核心框架
+│   │   ├── models.py    # 技能数据模型
+│   │   ├── base.py      # 技能基础类
+│   │   ├── manager.py   # 技能管理器
+│   │   ├── executor.py  # 技能执行器
+│   │   └── registry.py  # 技能注册表
+│   ├── built_in/        # 内置技能集合
+│   │   ├── conversation/ # 对话技能
+│   │   │   ├── emotional_support.py  # 情感支持技能
+│   │   │   ├── deep_questioning.py   # 深度提问技能
+│   │   │   └── storytelling.py       # 故事讲述技能
+│   │   └── knowledge/   # 知识技能
+│   │       └── analysis.py           # 分析技能
+│   ├── intelligence/    # 智能分析模块
+│   │   ├── intent_classifier.py      # 意图识别
+│   │   ├── skill_matcher.py          # 技能匹配
+│   │   └── recommendation_engine.py  # 推荐引擎
+│   └── monitoring/      # 技能监控
 ├── config/               # 配置模块
 │   ├── preset_characters.py  # 预设角色数据
 │   └── __init__.py
@@ -91,7 +113,7 @@ cp .env.example .env
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-3.5-turbo
+OPENAI_MODEL=gpt-4o-mini
 APP_TITLE=AI角色扮演聊天网站
 ```
 
@@ -138,6 +160,52 @@ streamlit run app/main.py
 - **技能**: 理论物理、数学建模、思想实验
 - **语音**: 智慧男性声音，德式口音
 
+## 🧠 AI 智能技能系统
+
+### 核心特性
+
+#### 🎯 智能技能匹配
+
+- **动态识别**: 根据用户输入自动识别最适合的技能
+- **上下文感知**: 基于对话历史和角色特性进行智能匹配
+- **置信度评分**: 为每个技能匹配提供置信度评分
+- **多技能协作**: 支持多个技能协同工作，提供更丰富的回应
+
+#### 💝 情感支持技能
+
+- **情感识别**: 自动检测用户的情绪状态（悲伤、焦虑、孤独等）
+- **角色专属支持**: 不同角色提供符合其人设的情感支持
+  - **哈利·波特**: 基于个人经历的温暖鼓励
+  - **苏格拉底**: 哲学思辨式的情感引导
+- **共情回应**: 提供理解、支持和积极引导的回应
+- **支持质量评估**: 实时评估情感支持的有效性
+
+#### 🎪 对话技能集合
+
+- **深度提问**: 苏格拉底式提问，引导用户深入思考
+- **故事讲述**: 根据用户需求创作个性化故事
+- **知识分析**: 提供专业的分析和解释
+
+#### 🎲 智能推荐引擎
+
+- **意图识别**: 分析用户真正的需求和意图
+- **技能推荐**: 推荐最适合当前情况的技能
+- **个性化配置**: 根据用户偏好调整推荐策略
+- **学习优化**: 基于使用反馈持续优化推荐效果
+
+### 技能执行流程
+
+```
+用户输入 → 意图识别 → 技能匹配 → 置信度评分 → 技能执行 → 质量评估 → 个性化回应
+```
+
+### 性能监控
+
+- **执行统计**: 跟踪技能使用频率和成功率
+- **质量评分**: 监控回应质量和用户满意度
+- **性能优化**: 基于数据分析持续优化技能表现
+- **错误处理**: 完善的错误处理和降级策略
+
 ## 📊 数据库模型
 
 ### 核心表结构
@@ -176,6 +244,12 @@ python -c "from config.preset_characters import get_preset_characters; print(get
 
 # 检查音频依赖
 python -c "from services.audio_utils import AudioUI; AudioUI.show_dependencies_warning()"
+
+# 测试技能系统
+python -c "from skills.core.registry import SkillRegistry; print(SkillRegistry.list_skills())"
+
+# 测试情感支持技能
+python -c "from skills.built_in.conversation.emotional_support import EmotionalSupportSkill; print(EmotionalSupportSkill.get_metadata())"
 ```
 
 ### 重置数据库
@@ -201,10 +275,18 @@ python run.py --reset --sample-data
 
 ### 语音功能
 
-7. **录音输入**: 点击录音按钮进行语音输入，自动转换为文字
-8. **语音回复**: 角色回复时自动生成语音，点击播放按钮收听
-9. **语音设置**: 可在设置中调整音频质量和语音选项
-10. **缓存管理**: 系统自动管理音频缓存，优化性能
+1. **录音输入**: 点击录音按钮进行语音输入，自动转换为文字
+2. **语音回复**: 角色回复时自动生成语音，点击播放按钮收听
+3. **语音设置**: 可在设置中调整音频质量和语音选项
+4. **缓存管理**: 系统自动管理音频缓存，优化性能
+
+### AI 智能技能功能
+
+1. **智能情感支持**: 当表达负面情绪时，系统自动激活情感支持技能
+2. **个性化回应**: 不同角色提供符合其人设的专属情感支持
+3. **技能推荐**: 系统根据对话内容推荐适合的技能增强体验
+4. **深度对话**: 享受苏格拉底式的深度提问和哲学探讨
+5. **智能故事**: 请求角色为你创作个性化的故事内容
 
 ### 浏览器要求
 
@@ -218,9 +300,7 @@ python run.py --reset --sample-data
 
 #### 聊天模型
 
-- `gpt-3.5-turbo` (默认，快速响应)
-- `gpt-4` (更高质量，需要相应 API 权限)
-- `gpt-4-turbo` (平衡性能和质量)
+- `gpt-4o-mini` (性价比高)
 
 #### 语音服务
 
