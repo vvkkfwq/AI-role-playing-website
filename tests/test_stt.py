@@ -16,8 +16,9 @@ import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Add current directory to path for imports
-sys.path.append(str(Path(__file__).parent))
+# Add project root directory to path for imports
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
 try:
     from pydub import AudioSegment
@@ -26,7 +27,7 @@ except ImportError:
     print("❌ pydub not available. Please install with: pip install pydub")
     sys.exit(1)
 
-from stt_service import (
+from services.stt_service import (
     stt_service,
     ComprehensiveSTTService,
     AudioPreprocessor,
@@ -165,7 +166,7 @@ class STTTester:
             assert isinstance(summary, dict)
 
             # Create mock STT result
-            from stt_service import STTResult
+            from services.stt_service import STTResult
             mock_result = STTResult(
                 text="test transcription",
                 confidence=0.85,

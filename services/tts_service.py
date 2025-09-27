@@ -22,8 +22,8 @@ import streamlit as st
 from openai import OpenAI
 from pydub import AudioSegment
 
-from models import VoiceConfig, Character
-from audio_utils import AudioManager
+from app.models import VoiceConfig, Character
+from services.audio_utils import AudioManager
 
 
 class TTSService:

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from contextlib import contextmanager
 
-from models import Character, Conversation, Message, CharacterCreate, CharacterUpdate, VoiceConfig
+from app.models import Character, Conversation, Message, CharacterCreate, CharacterUpdate, VoiceConfig
 
 
 class DatabaseManager:

@@ -8,8 +8,8 @@ This script demonstrates and tests all the database operations:
 - Message handling
 """
 
-from database import DatabaseManager
-from models import CharacterCreate, CharacterUpdate, VoiceConfig, MessageRole
+from app.database import DatabaseManager
+from app.models import CharacterCreate, CharacterUpdate, VoiceConfig, MessageRole
 from pprint import pprint
 
 

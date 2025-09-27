@@ -51,7 +51,7 @@ def test_audio_manager():
     print("\n🔧 Testing AudioManager...")
 
     try:
-        from audio_utils import AudioManager, audio_manager
+        from services.audio_utils import AudioManager, audio_manager
 
         # Test initialization
         manager = AudioManager()
@@ -81,7 +81,7 @@ def test_audio_ui():
     print("\n🎨 Testing AudioUI...")
 
     try:
-        from audio_utils import AudioUI
+        from services.audio_utils import AudioUI
 
         # Test error messages (these should not fail)
         print("✅ AudioUI imported successfully")
@@ -102,7 +102,7 @@ def test_directory_creation():
     print("\n📁 Testing directory creation...")
 
     try:
-        from audio_utils import AudioManager
+        from services.audio_utils import AudioManager
 
         # Test with custom directory
         test_dir = "test_audio_temp"

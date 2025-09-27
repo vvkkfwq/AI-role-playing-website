@@ -20,12 +20,13 @@ import os
 import sys
 from pathlib import Path
 
-# Add current directory to path to import local modules
-sys.path.insert(0, str(Path(__file__).parent))
+# Add project root directory to path to import local modules
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
-from database import DatabaseManager
-from preset_characters import populate_preset_characters
-from models import MessageRole
+from app.database import DatabaseManager
+from config.preset_characters import populate_preset_characters
+from app.models import MessageRole
 
 
 def reset_database(db_path: str):

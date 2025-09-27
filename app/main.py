@@ -1,21 +1,29 @@
+import sys
+import os
+from pathlib import Path
+
+# Add project root to path if not already there
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 import streamlit as st
 from openai import OpenAI
-import os
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 
 # Import our enhanced database and models
-from database import DatabaseManager
-from models import Character, MessageRole
+from app.database import DatabaseManager
+from app.models import Character, MessageRole
 
 # Import audio processing utilities
-from audio_utils import audio_manager, AudioUI, TTSPlaybackUI
+from services.audio_utils import audio_manager, AudioUI, TTSPlaybackUI
 
 # Import speech-to-text service
-from stt_service import stt_service, STTResult
+from services.stt_service import stt_service, STTResult
 
 # Import text-to-speech service
-from tts_service import tts_manager
+from services.tts_service import tts_manager
 
 try:
     from audiorecorder import audiorecorder
@@ -53,10 +61,6 @@ class AIRolePlayApp:
             st.session_state.stt_enabled = True
         if "stt_language" not in st.session_state:
             st.session_state.stt_language = "auto"
-        if "pending_stt_result" not in st.session_state:
-            st.session_state.pending_stt_result = None
-        if "show_stt_editing" not in st.session_state:
-            st.session_state.show_stt_editing = False
         # TTS-related session state
         if "tts_enabled" not in st.session_state:
             st.session_state.tts_enabled = True
@@ -66,6 +70,39 @@ class AIRolePlayApp:
             st.session_state.tts_model = "tts-1-hd"
         if "tts_format" not in st.session_state:
             st.session_state.tts_format = "mp3"
+        # Text input management
+        if "text_input_value" not in st.session_state:
+            st.session_state.text_input_value = ""
+        if "input_key" not in st.session_state:
+            st.session_state.input_key = 0
+        # AI response generation state
+        if "generating_response" not in st.session_state:
+            st.session_state.generating_response = False
+
+        # Clean up old processed audio IDs to prevent memory buildup
+        self._cleanup_processed_audio_ids()
+
+    def _cleanup_processed_audio_ids(self):
+        """Clean up old processed audio IDs to prevent session state buildup"""
+        try:
+            # Find all processed_audio_ keys
+            audio_keys = [
+                key
+                for key in st.session_state.keys()
+                if key.startswith("processed_audio_")
+            ]
+
+            # Keep only the most recent 50 processed audio IDs to prevent memory buildup
+            if len(audio_keys) > 50:
+                # Sort by key to get oldest first (this is a simple approach)
+                audio_keys.sort()
+                keys_to_remove = audio_keys[:-50]  # Keep only last 50
+
+                for key in keys_to_remove:
+                    del st.session_state[key]
+        except Exception:
+            # Silently handle cleanup errors
+            pass
 
     def init_audio_cleanup(self):
         """Initialize audio file cleanup on app start"""
@@ -80,6 +117,45 @@ class AIRolePlayApp:
         """Generate system prompt from character template"""
         # Use the character's prompt_template directly
         return character.prompt_template
+
+    def generate_streaming_response(
+        self, messages: List[Dict], character: Character, placeholder
+    ) -> str:
+        """Generate streaming response with live display in chat"""
+        import time
+
+        try:
+            system_prompt = self.get_character_prompt(character)
+
+            formatted_messages = [{"role": "system", "content": system_prompt}]
+            formatted_messages.extend(messages)
+
+            # Small delay to show the thinking state
+            time.sleep(0.5)
+
+            response = self.client.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
+                messages=formatted_messages,
+                max_tokens=500,
+                temperature=0.8,
+                stream=True,
+            )
+
+            # Handle streaming response
+            full_response = ""
+            for chunk in response:
+                if chunk.choices[0].delta.content is not None:
+                    full_response += chunk.choices[0].delta.content
+                    placeholder.markdown(full_response + "▊")
+
+            # Remove cursor and display final response
+            placeholder.markdown(full_response)
+            return full_response
+
+        except Exception as e:
+            error_msg = f"抱歉，我现在无法回应。错误：{str(e)}"
+            placeholder.markdown(error_msg)
+            return error_msg
 
     def generate_response(self, messages: List[Dict], character: Character) -> str:
         try:
@@ -163,7 +239,7 @@ class AIRolePlayApp:
                 st.session_state.stt_enabled = st.toggle(
                     "启用语音识别",
                     value=st.session_state.stt_enabled,
-                    help="开启后录音将自动转换为文字"
+                    help="开启后录音将自动转换为文字",
                 )
 
                 if st.session_state.stt_enabled:
@@ -171,25 +247,17 @@ class AIRolePlayApp:
                     language_options = {
                         "自动检测": "auto",
                         "中文": "zh",
-                        "English": "en"
+                        "English": "en",
                     }
 
                     selected_lang = st.selectbox(
                         "识别语言",
                         options=list(language_options.keys()),
-                        index=list(language_options.values()).index(st.session_state.stt_language)
+                        index=list(language_options.values()).index(
+                            st.session_state.stt_language
+                        ),
                     )
                     st.session_state.stt_language = language_options[selected_lang]
-
-                    # Show STT statistics
-                    stt_stats = stt_service.stats_manager.get_statistics_summary()
-                    if "total_requests" in stt_stats and stt_stats["total_requests"] > 0:
-                        with st.expander("📊 识别统计"):
-                            st.metric("总请求数", stt_stats["total_requests"])
-                            st.metric("成功率", f"{stt_stats['success_rate']}%")
-                            st.metric("平均准确度", f"{stt_stats['average_confidence']}%")
-                            if stt_stats["correction_rate"] > 0:
-                                st.metric("用户修正率", f"{stt_stats['correction_rate']}%")
 
                 st.markdown("---")
 
@@ -200,7 +268,7 @@ class AIRolePlayApp:
                 st.session_state.tts_enabled = st.toggle(
                     "启用语音合成",
                     value=st.session_state.tts_enabled,
-                    help="开启后AI回复将生成语音"
+                    help="开启后AI回复将生成语音",
                 )
 
                 if st.session_state.tts_enabled:
@@ -208,7 +276,7 @@ class AIRolePlayApp:
                     st.session_state.tts_auto_play = st.checkbox(
                         "自动播放",
                         value=st.session_state.tts_auto_play,
-                        help="AI回复后自动播放语音"
+                        help="AI回复后自动播放语音",
                     )
 
                     # Advanced TTS settings
@@ -217,14 +285,16 @@ class AIRolePlayApp:
                             "TTS模型",
                             options=["tts-1-hd", "tts-1"],
                             index=0 if st.session_state.tts_model == "tts-1-hd" else 1,
-                            help="tts-1-hd: 高质量, tts-1: 快速"
+                            help="tts-1-hd: 高质量, tts-1: 快速",
                         )
 
                         st.session_state.tts_format = st.selectbox(
                             "音频格式",
                             options=["mp3", "opus", "aac"],
-                            index=["mp3", "opus", "aac"].index(st.session_state.tts_format),
-                            help="不同格式的音质和大小有所差异"
+                            index=["mp3", "opus", "aac"].index(
+                                st.session_state.tts_format
+                            ),
+                            help="不同格式的音质和大小有所差异",
                         )
 
                         # Voice preview button
@@ -317,7 +387,34 @@ class AIRolePlayApp:
 
                         # Add TTS player if enabled
                         if st.session_state.tts_enabled:
-                            self.render_tts_for_message(content, character, message.get("message_id"))
+                            self.render_tts_for_message(
+                                content, character, message.get("message_id")
+                            )
+
+            # Check if we need to generate an AI response
+            if st.session_state.generating_response:
+                with st.chat_message("assistant", avatar=character.avatar_emoji):
+                    placeholder = st.empty()
+
+                    # Show thinking status first
+                    placeholder.markdown(f"🤔 {character.name}正在思考...")
+
+                    # Generate streaming response (this will replace the thinking message)
+                    response = self.generate_streaming_response(
+                        st.session_state.messages, character, placeholder
+                    )
+
+                    # Add the response to session state and clear the generating flag
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": response}
+                    )
+                    st.session_state.generating_response = False
+
+                    # Auto-save conversation periodically
+                    if len(st.session_state.messages) % 6 == 0:
+                        self.save_current_conversation()
+
+                    st.rerun()
 
         # Input section with both text and audio options
         self.render_input_section(character)
@@ -331,26 +428,16 @@ class AIRolePlayApp:
         # Show STT results if available
         stt_result = audio_metadata.get("stt_result")
         if stt_result:
-            confidence = stt_result.get("confidence", 0) * 100
             method = stt_result.get("method", "unknown")
             language = stt_result.get("language", "auto")
 
-            # Show transcription with confidence indicator
-            confidence_color = "green" if confidence > 80 else "orange" if confidence > 60 else "red"
-            st.markdown(
-                f"🔤 **识别结果** ({method}, {language}, "
-                f"<span style='color:{confidence_color}'>{confidence:.1f}%</span>):",
-                unsafe_allow_html=True
-            )
+            # Show transcription
+            st.markdown(f"🔤 **识别结果** ({method}, {language}):")
 
             if content and content != "[音频消息]":
                 st.markdown(f"*{content}*")
             else:
                 st.markdown("*无法识别音频内容*")
-
-            # Show processing time if available
-            if "processing_time" in stt_result:
-                st.caption(f"处理时间: {stt_result['processing_time']:.1f}秒")
 
         elif content and content != "[音频消息]":
             st.markdown(f"*转录文本:* {content}")
@@ -363,11 +450,28 @@ class AIRolePlayApp:
 
     def render_input_section(self, character: Character):
         """Render input section with text and audio options"""
-        # Text input
-        text_prompt = st.chat_input("输入你的消息...")
+        # Create text input and send button layout
+        col_input, col_send = st.columns([4, 1])
 
-        # Audio recording section
-        if AUDIO_RECORDER_AVAILABLE:
+        with col_input:
+            # Text input with current value from session state
+            text_value = st.text_input(
+                "输入你的消息...",
+                value=st.session_state.text_input_value,
+                key=f"message_input_{st.session_state.input_key}",
+                placeholder="输入文字或使用语音录制...",
+                label_visibility="collapsed",
+            )
+            # Update session state when text changes
+            if text_value != st.session_state.text_input_value:
+                st.session_state.text_input_value = text_value
+
+        with col_send:
+            # Send button
+            send_clicked = st.button("发送", type="primary", use_container_width=True)
+
+        # Audio recording section (simplified)
+        if AUDIO_RECORDER_AVAILABLE and st.session_state.stt_enabled:
             st.markdown("### 🎤 语音录制")
 
             # Check dependencies and show warnings
@@ -381,63 +485,64 @@ class AIRolePlayApp:
                     AudioUI.show_error_message("https_required")
                     st.info("请使用文本输入")
                 else:
-                    col1, col2 = st.columns([3, 1])
+                    try:
+                        audio = audiorecorder("点击录制", "点击停止")
 
-                    with col1:
-                        try:
-                            audio = audiorecorder("点击录制", "点击停止")
-                        except Exception as e:
-                            AudioUI.show_error_message("recording_failed", str(e))
-                            audio = None
-
-                    with col2:
                         if audio and len(audio) > 0:
-                            # Validate audio before showing controls
-                            is_valid, error_msg = audio_manager.validate_audio(audio)
+                            # Create a unique identifier for this audio segment
+                            audio_id = hash(audio.export().read())
 
-                            if is_valid:
-                                # Show audio info
-                                duration = len(audio) / 1000.0
-                                st.write(f"⏱️ {audio_manager.format_duration(duration)}")
+                            # Check if this audio has already been processed
+                            if f"processed_audio_{audio_id}" not in st.session_state:
+                                # Validate audio
+                                is_valid, error_msg = audio_manager.validate_audio(
+                                    audio
+                                )
 
-                                # Preview audio
-                                try:
-                                    st.audio(audio.export().read(), format="audio/wav")
-                                except Exception:
-                                    st.warning("音频预览不可用")
+                                if is_valid:
+                                    # Mark this audio as being processed to prevent reprocessing
+                                    st.session_state[f"processed_audio_{audio_id}"] = (
+                                        True
+                                    )
 
-                                # STT processing and send buttons
-                                col_stt, col_send = st.columns(2)
+                                    # Show audio info
+                                    duration = len(audio) / 1000.0
+                                    st.info(
+                                        f"⏱️ 录制时长: {audio_manager.format_duration(duration)} - 正在自动转换为文字..."
+                                    )
 
-                                with col_stt:
-                                    if st.session_state.stt_enabled and st.button("🔤 转文字", help="使用语音识别转换为文字"):
-                                        self.process_stt_conversion(audio, character)
-                                        st.rerun()
+                                    # Automatically convert audio to text and add to input
+                                    self.auto_convert_audio_to_text(audio, character)
+                                    st.rerun()
+                                else:
+                                    st.error(f"音频验证失败: {error_msg}")
+                    except Exception as e:
+                        AudioUI.show_error_message("recording_failed", str(e))
 
-                                with col_send:
-                                    if st.button("📤 发送语音", type="primary"):
-                                        if st.session_state.stt_enabled:
-                                            # Process with STT
-                                            self.process_user_message_with_stt(audio, character)
-                                        else:
-                                            # Send as audio message only
-                                            self.process_user_message("[音频消息]", audio, character)
-                                        st.rerun()
-                            else:
-                                st.error(f"音频验证失败: {error_msg}")
-
-        else:
+        elif AUDIO_RECORDER_AVAILABLE and not st.session_state.stt_enabled:
+            st.info("💡 在侧边栏启用语音识别以使用语音录制功能")
+        elif not AUDIO_RECORDER_AVAILABLE:
             st.warning(
                 "⚠️ 语音录制功能不可用。请安装: pip install streamlit-audiorecorder"
             )
 
-        # STT Results Editing Interface
-        if st.session_state.pending_stt_result and st.session_state.show_stt_editing:
-            self.render_stt_editing_interface(character)
+        # Process text input when send button clicked or text is entered
+        if send_clicked and st.session_state.text_input_value.strip():
+            # Add user message to session
+            message_data = {
+                "role": "user",
+                "content": st.session_state.text_input_value.strip(),
+            }
+            st.session_state.messages.append(message_data)
 
-        # Process text input
-        if text_prompt:
-            self.process_user_message(text_prompt, None, character)
+            # Set flag to generate AI response
+            if character:
+                st.session_state.generating_response = True
+
+            # Clear the input field and force refresh by changing key
+            st.session_state.text_input_value = ""
+            st.session_state.input_key += 1
+            st.rerun()
 
     def _check_https_context(self) -> bool:
         """Check if the app is running in HTTPS context for audio recording"""
@@ -448,189 +553,52 @@ class AIRolePlayApp:
         except Exception:
             return False
 
-    def process_stt_conversion(self, audio_segment, character: Character = None):
-        """Process STT conversion and show editing interface"""
+    def auto_convert_audio_to_text(self, audio_segment, character: Character = None):
+        """Automatically convert audio to text and fill input field"""
         with st.spinner("正在识别语音..."):
             # Get character context for better STT accuracy
             prompt = None
             if character:
                 prompt = f"角色对话: {character.name} - {character.title}"
 
-            # Perform STT
-            stt_result = stt_service.transcribe_audio(
-                audio_segment,
-                language=st.session_state.stt_language,
-                prompt=prompt
-            )
+            # Determine if we should process long audio in chunks
+            duration_seconds = len(audio_segment) / 1000.0
 
-            # Store results in session state
-            st.session_state.pending_stt_result = {
-                "stt_result": stt_result,
-                "audio_segment": audio_segment,
-                "character": character,
-                "original_text": stt_result.text,
-                "edited_text": stt_result.text
-            }
-            st.session_state.show_stt_editing = True
+            if duration_seconds > 30:  # Long audio
+                stt_result = stt_service.process_long_audio(
+                    audio_segment, language=st.session_state.stt_language, prompt=prompt
+                )
+            else:
+                stt_result = stt_service.transcribe_audio(
+                    audio_segment, language=st.session_state.stt_language, prompt=prompt
+                )
 
-        # Show result
+        # Handle STT result
         if stt_result.error:
             st.error(f"语音识别失败: {stt_result.error}")
+        elif stt_result.text:
+            # Fill the text input with recognized text
+            st.session_state.text_input_value = stt_result.text
+
+            # Record statistics
+            stt_service.stats_manager.record_request(stt_result, user_edited=False)
+
+            # Show success message
+            st.success("语音识别成功!")
         else:
-            st.success(f"识别完成! 准确度: {stt_result.confidence*100:.1f}%")
+            st.warning("未能识别出音频内容")
 
-    def render_stt_editing_interface(self, character: Character):
-        """Render interface for editing STT results"""
-        st.markdown("### ✏️ 编辑识别结果")
-
-        pending = st.session_state.pending_stt_result
-        if not pending:
-            return
-
-        stt_result = pending["stt_result"]
-
-        # Show original result with confidence
-        confidence = stt_result.confidence * 100
-        confidence_color = "green" if confidence > 80 else "orange" if confidence > 60 else "red"
-
-        st.markdown(
-            f"**原识别结果** (准确度: <span style='color:{confidence_color}'>{confidence:.1f}%</span>):",
-            unsafe_allow_html=True
-        )
-        st.info(stt_result.text if stt_result.text else "无法识别音频内容")
-
-        # Editable text area
-        edited_text = st.text_area(
-            "编辑文本:",
-            value=pending["edited_text"],
-            height=100,
-            help="您可以修正识别错误的文字"
-        )
-
-        # Update edited text in session state
-        st.session_state.pending_stt_result["edited_text"] = edited_text
-
-        # Action buttons
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            if st.button("✅ 发送消息", type="primary"):
-                # Send the edited text as message
-                self.send_stt_message(edited_text, pending, user_edited=(edited_text != stt_result.text))
-                st.rerun()
-
-        with col2:
-            if st.button("🔄 重新识别"):
-                # Re-run STT with different settings
-                with st.spinner("重新识别中..."):
-                    new_result = stt_service.transcribe_audio(
-                        pending["audio_segment"],
-                        language="auto",  # Try auto-detection
-                        use_fallback_on_error=True
-                    )
-                    st.session_state.pending_stt_result["stt_result"] = new_result
-                    st.session_state.pending_stt_result["edited_text"] = new_result.text
-                st.rerun()
-
-        with col3:
-            if st.button("📤 仅发语音"):
-                # Send as audio message without text
-                self.send_stt_message("[音频消息]", pending, user_edited=False)
-                st.rerun()
-
-        with col4:
-            if st.button("❌ 取消"):
-                # Clear pending STT result
-                st.session_state.pending_stt_result = None
-                st.session_state.show_stt_editing = False
-                st.rerun()
-
-        # User feedback section
-        st.markdown("---")
-        st.markdown("**反馈识别质量** (帮助改进服务):")
-
-        col_rating1, col_rating2 = st.columns([1, 2])
-
-        with col_rating1:
-            rating = st.select_slider(
-                "满意度",
-                options=[1, 2, 3, 4, 5],
-                value=3,
-                format_func=lambda x: "⭐" * x
-            )
-
-        with col_rating2:
-            if st.button("提交评分"):
-                stt_service.stats_manager.record_user_satisfaction(rating)
-                st.success("感谢您的反馈!")
-
-    def send_stt_message(self, text_content: str, pending_data: dict, user_edited: bool = False):
-        """Send message with STT metadata"""
-        stt_result = pending_data["stt_result"]
-        audio_segment = pending_data["audio_segment"]
-        character = pending_data["character"]
-
-        # Save audio file
-        audio_metadata = audio_manager.save_audio(
-            audio_segment,
-            conversation_id=st.session_state.current_conversation_id,
-        )
-
-        # Add STT result to audio metadata
-        if audio_metadata:
-            # Convert STTResult to dict for JSON serialization
-            stt_dict = {
-                "text": stt_result.text,
-                "confidence": stt_result.confidence,
-                "language": stt_result.language,
-                "duration": stt_result.duration,
-                "method": stt_result.method,
-                "processing_time": stt_result.processing_time,
-                "user_edited": user_edited
-            }
-            audio_metadata["stt_result"] = stt_dict
-
-        # Create message data
-        message_data = {
-            "role": "user",
-            "content": text_content,
-            "metadata": {"audio": audio_metadata} if audio_metadata else {}
-        }
-
-        # Record STT statistics
-        stt_service.stats_manager.record_request(stt_result, user_edited)
-
-        # Add to messages and process
-        st.session_state.messages.append(message_data)
-
-        # Generate assistant response
-        if character and text_content != "[音频消息]":
-            with st.chat_message("assistant", avatar=character.avatar_emoji):
-                with st.spinner(f"{character.name}正在思考..."):
-                    response = self.generate_response_with_tts(st.session_state.messages, character)
-                st.markdown(response)
-
-                # Add TTS player if enabled
-                if st.session_state.tts_enabled:
-                    self.render_tts_for_message(response, character)
-
-            st.session_state.messages.append({"role": "assistant", "content": response})
-
-        # Clear pending STT result
-        st.session_state.pending_stt_result = None
-        st.session_state.show_stt_editing = False
-
-        # Auto-save conversation
-        if len(st.session_state.messages) % 6 == 0:
-            self.save_current_conversation()
-
-    def render_tts_for_message(self, text: str, character: Character, message_id: int = None):
+    def render_tts_for_message(
+        self, text: str, character: Character, message_id: int = None
+    ):
         """Render TTS audio player for assistant message"""
         if not text or text.strip() == "":
             return
 
         # Create unique key for this message's TTS
-        tts_key = f"tts_{message_id}_{hash(text)}" if message_id else f"tts_{hash(text)}"
+        tts_key = (
+            f"tts_{message_id}_{hash(text)}" if message_id else f"tts_{hash(text)}"
+        )
 
         # Check if TTS audio already exists in session state
         tts_cache_key = f"tts_audio_{tts_key}"
@@ -645,7 +613,7 @@ class AIRolePlayApp:
                             text=text,
                             character=character,
                             show_progress=False,
-                            use_cache=True
+                            use_cache=True,
                         )
                         st.session_state[tts_cache_key] = tts_audio
                         st.rerun()
@@ -665,180 +633,59 @@ class AIRolePlayApp:
             TTSPlaybackUI.show_voice_preview_player(
                 character.name,
                 character.voice_config.voice_id if character.voice_config else "alloy",
-                preview_audio
+                preview_audio,
             )
         else:
             st.error("语音预览生成失败")
 
-    def generate_response_with_tts(self, messages: List[Dict], character: Character) -> str:
-        """Generate response and optionally create TTS audio"""
+    def generate_response_with_tts(
+        self, messages: List[Dict], character: Character
+    ) -> str:
+        """Generate streaming response and optionally create TTS audio"""
         try:
-            # Generate text response
-            response_text = self.generate_response(messages, character)
+            system_prompt = self.get_character_prompt(character)
+            formatted_messages = [{"role": "system", "content": system_prompt}]
+            formatted_messages.extend(messages)
+
+            response = self.client.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
+                messages=formatted_messages,
+                max_tokens=500,
+                temperature=0.8,
+                stream=True,
+            )
+
+            # Handle streaming response
+            full_response = ""
+            placeholder = st.empty()
+
+            for chunk in response:
+                if chunk.choices[0].delta.content is not None:
+                    full_response += chunk.choices[0].delta.content
+                    placeholder.markdown(full_response + "▊")
+
+            # Remove cursor and display final response
+            placeholder.markdown(full_response)
 
             # Generate TTS if enabled and auto-play is on
             if st.session_state.tts_enabled and st.session_state.tts_auto_play:
                 # Generate TTS in background
                 tts_audio = tts_manager.generate_character_speech(
-                    text=response_text,
+                    text=full_response,
                     character=character,
                     show_progress=False,
-                    use_cache=True
+                    use_cache=True,
                 )
 
                 # Store in session state for immediate playback
                 if tts_audio:
-                    tts_key = f"tts_auto_{hash(response_text)}"
+                    tts_key = f"tts_auto_{hash(full_response)}"
                     st.session_state[f"tts_audio_{tts_key}"] = tts_audio
 
-            return response_text
+            return full_response
 
         except Exception as e:
             return f"抱歉，我现在无法回应。错误：{str(e)}"
-
-    def process_user_message_with_stt(self, audio_segment, character: Character = None):
-        """Process audio message with automatic STT conversion"""
-        with st.spinner("正在识别语音..."):
-            # Get character context for better STT accuracy
-            prompt = None
-            if character:
-                prompt = f"角色对话: {character.name} - {character.title}"
-
-            # Determine if we should process long audio in chunks
-            duration_seconds = len(audio_segment) / 1000.0
-
-            if duration_seconds > 30:  # Long audio
-                stt_result = stt_service.process_long_audio(
-                    audio_segment,
-                    language=st.session_state.stt_language,
-                    prompt=prompt
-                )
-            else:
-                stt_result = stt_service.transcribe_audio(
-                    audio_segment,
-                    language=st.session_state.stt_language,
-                    prompt=prompt
-                )
-
-        # Handle STT result
-        if stt_result.error:
-            st.error(f"语音识别失败: {stt_result.error}")
-            # Fall back to audio-only message
-            self.process_user_message("[音频消息]", audio_segment, character)
-        else:
-            # Use recognized text or fallback to audio message
-            text_content = stt_result.text if stt_result.text else "[音频消息]"
-
-            # Save audio with STT metadata
-            audio_metadata = audio_manager.save_audio(
-                audio_segment,
-                conversation_id=st.session_state.current_conversation_id,
-            )
-
-            if audio_metadata:
-                # Add STT result to metadata
-                stt_dict = {
-                    "text": stt_result.text,
-                    "confidence": stt_result.confidence,
-                    "language": stt_result.language,
-                    "duration": stt_result.duration,
-                    "method": stt_result.method,
-                    "processing_time": stt_result.processing_time,
-                    "user_edited": False
-                }
-                audio_metadata["stt_result"] = stt_dict
-
-            # Create message
-            message_data = {
-                "role": "user",
-                "content": text_content,
-                "metadata": {"audio": audio_metadata} if audio_metadata else {}
-            }
-
-            # Record statistics
-            stt_service.stats_manager.record_request(stt_result, user_edited=False)
-
-            # Add to session and display
-            st.session_state.messages.append(message_data)
-
-            # Display user message
-            with st.chat_message("user"):
-                if audio_metadata:
-                    self.render_audio_message(audio_metadata, text_content)
-                else:
-                    st.markdown(text_content)
-
-            # Generate assistant response if we have text
-            if character and text_content != "[音频消息]":
-                with st.chat_message("assistant", avatar=character.avatar_emoji):
-                    with st.spinner(f"{character.name}正在思考..."):
-                        response = self.generate_response_with_tts(st.session_state.messages, character)
-                    st.markdown(response)
-
-                    # Add TTS player if enabled
-                    if st.session_state.tts_enabled:
-                        self.render_tts_for_message(response, character)
-
-                st.session_state.messages.append({"role": "assistant", "content": response})
-
-            # Auto-save conversation
-            if len(st.session_state.messages) % 6 == 0:
-                self.save_current_conversation()
-
-    def process_user_message(
-        self, content: str, audio_segment=None, character: Character = None
-    ):
-        """Process user message (text or audio) and generate response"""
-        message_data = {"role": "user", "content": content}
-
-        # Handle audio message
-        if audio_segment is not None:
-            try:
-                # Save audio file
-                audio_metadata = audio_manager.save_audio(
-                    audio_segment,
-                    conversation_id=st.session_state.current_conversation_id,
-                )
-
-                if audio_metadata:
-                    message_data["metadata"] = {"audio": audio_metadata}
-                else:
-                    st.error("音频处理失败，将作为文本消息发送")
-
-            except Exception as e:
-                st.error(f"音频处理错误: {str(e)}")
-
-        # Add user message to session
-        st.session_state.messages.append(message_data)
-
-        # Display user message
-        with st.chat_message("user"):
-            if audio_segment is not None and message_data.get("metadata", {}).get(
-                "audio"
-            ):
-                self.render_audio_message(message_data["metadata"]["audio"], content)
-            else:
-                st.markdown(content)
-
-        # Generate assistant response
-        if character:
-            with st.chat_message("assistant", avatar=character.avatar_emoji):
-                with st.spinner(f"{character.name}正在思考..."):
-                    # For audio messages, use the content as text for AI processing
-                    response = self.generate_response_with_tts(
-                        st.session_state.messages, character
-                    )
-                st.markdown(response)
-
-                # Add TTS player if enabled
-                if st.session_state.tts_enabled:
-                    self.render_tts_for_message(response, character)
-
-            st.session_state.messages.append({"role": "assistant", "content": response})
-
-            # Auto-save conversation periodically
-            if len(st.session_state.messages) % 6 == 0:
-                self.save_current_conversation()
 
     def render_conversations_history(self):
         """Render conversation history page"""
@@ -884,10 +731,9 @@ class AIRolePlayApp:
                             # Show STT info if available
                             stt_info = audio_info.get("stt_result")
                             if stt_info:
-                                confidence = stt_info.get("confidence", 0) * 100
                                 method = stt_info.get("method", "unknown")
                                 st.markdown(
-                                    f"{role_icon} **{msg.role.value}:** 🎤 语音消息 ({duration_str}, {method}, {confidence:.0f}%)"
+                                    f"{role_icon} **{msg.role.value}:** 🎤 语音消息 ({duration_str}, {method})"
                                 )
                             else:
                                 st.markdown(

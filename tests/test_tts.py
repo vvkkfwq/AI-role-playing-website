@@ -18,10 +18,10 @@ def test_imports():
     print("🧪 Testing module imports...")
 
     try:
-        from tts_service import TTSService, TTSManager
-        from models import Character, VoiceConfig
-        from database import DatabaseManager
-        from preset_characters import get_preset_characters
+        from services.tts_service import TTSService, TTSManager
+        from app.models import Character, VoiceConfig
+        from app.database import DatabaseManager
+        from config.preset_characters import get_preset_characters
         print("✅ All modules imported successfully")
         return True
     except ImportError as e:
@@ -33,7 +33,7 @@ def test_tts_service_initialization():
     print("\n🧪 Testing TTS service initialization...")
 
     try:
-        from tts_service import TTSService, tts_manager
+        from services.tts_service import TTSService, tts_manager
 
         # Test service initialization
         tts_service = TTSService()
@@ -55,7 +55,7 @@ def test_character_voice_configurations():
     print("\n🧪 Testing character voice configurations...")
 
     try:
-        from preset_characters import get_preset_characters
+        from config.preset_characters import get_preset_characters
 
         characters = get_preset_characters()
         print(f"✅ Found {len(characters)} preset characters")
@@ -81,9 +81,9 @@ def test_tts_generation():
         return False
 
     try:
-        from tts_service import tts_manager
-        from preset_characters import get_preset_characters
-        from models import Character
+        from services.tts_service import tts_manager
+        from config.preset_characters import get_preset_characters
+        from app.models import Character
 
         characters_data = get_preset_characters()
         test_text = "你好，这是一个语音测试。"
@@ -137,7 +137,7 @@ def test_cache_functionality():
     print("\n🧪 Testing TTS cache functionality...")
 
     try:
-        from tts_service import tts_manager
+        from services.tts_service import tts_manager
 
         # Get cache info
         cache_info = tts_manager.tts_service.get_cache_info()
@@ -159,7 +159,7 @@ def test_voice_preview():
     print("\n🧪 Testing voice preview functionality...")
 
     try:
-        from tts_service import TTSService
+        from services.tts_service import TTSService
 
         tts_service = TTSService()
 
@@ -189,7 +189,7 @@ def test_ui_components():
     print("\n🧪 Testing UI components (structural test)...")
 
     try:
-        from audio_utils import TTSPlaybackUI
+        from services.audio_utils import TTSPlaybackUI
 
         # Test that UI methods exist and are callable
         ui_methods = [
