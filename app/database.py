@@ -64,10 +64,91 @@ class DatabaseManager:
                 )
             """)
 
+            # Create skill executions table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS skill_executions (
+                    id TEXT PRIMARY KEY,  -- UUID
+                    skill_name TEXT NOT NULL,
+                    character_id INTEGER,
+                    conversation_id INTEGER,
+                    message_id INTEGER,
+                    status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed', 'timeout', 'cancelled')),
+                    progress REAL DEFAULT 0.0,
+                    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    execution_time REAL,
+                    result_data TEXT DEFAULT '{}',  -- JSON result data
+                    performance_metrics TEXT DEFAULT '{}',  -- JSON performance metrics
+                    error_message TEXT,
+                    error_code TEXT,
+                    FOREIGN KEY (character_id) REFERENCES characters (id) ON DELETE SET NULL,
+                    FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE,
+                    FOREIGN KEY (message_id) REFERENCES messages (id) ON DELETE CASCADE
+                )
+            """)
+
+            # Create character skill configs table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS character_skill_configs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    character_id INTEGER NOT NULL,
+                    skill_name TEXT NOT NULL,
+                    parameters TEXT DEFAULT '{}',  -- JSON parameters
+                    weight REAL DEFAULT 1.0,
+                    threshold REAL DEFAULT 0.5,
+                    priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
+                    personalization TEXT DEFAULT '{}',  -- JSON personalization settings
+                    response_style TEXT DEFAULT '{}',  -- JSON response style
+                    enabled BOOLEAN DEFAULT 1,
+                    max_uses_per_conversation INTEGER,
+                    cooldown_seconds REAL DEFAULT 0.0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (character_id) REFERENCES characters (id) ON DELETE CASCADE,
+                    UNIQUE(character_id, skill_name)
+                )
+            """)
+
+            # Create skill performance metrics table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS skill_performance_metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    skill_name TEXT NOT NULL,
+                    character_id INTEGER,
+                    total_executions INTEGER DEFAULT 0,
+                    successful_executions INTEGER DEFAULT 0,
+                    failed_executions INTEGER DEFAULT 0,
+                    average_execution_time REAL DEFAULT 0.0,
+                    min_execution_time REAL DEFAULT 0.0,
+                    max_execution_time REAL DEFAULT 0.0,
+                    average_confidence_score REAL DEFAULT 0.0,
+                    average_relevance_score REAL DEFAULT 0.0,
+                    average_quality_score REAL DEFAULT 0.0,
+                    user_satisfaction_score REAL DEFAULT 0.0,
+                    positive_feedback_count INTEGER DEFAULT 0,
+                    negative_feedback_count INTEGER DEFAULT 0,
+                    daily_usage_count TEXT DEFAULT '{}',  -- JSON daily usage stats
+                    peak_usage_time TEXT,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    measurement_period_start TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    measurement_period_end TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (character_id) REFERENCES characters (id) ON DELETE CASCADE,
+                    UNIQUE(skill_name, character_id)
+                )
+            """)
+
             # Create indexes for better performance
             conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_character_id ON conversations(character_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)")
+
+            # Skill-related indexes
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_skill_executions_skill_name ON skill_executions(skill_name)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_skill_executions_character_id ON skill_executions(character_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_skill_executions_conversation_id ON skill_executions(conversation_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_skill_executions_started_at ON skill_executions(started_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_character_skill_configs_character_id ON character_skill_configs(character_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_skill_performance_metrics_skill_name ON skill_performance_metrics(skill_name)")
 
             conn.commit()
 
@@ -318,3 +399,313 @@ class DatabaseManager:
             timestamp=datetime.fromisoformat(row['timestamp']),
             metadata=json.loads(row['metadata']) if row['metadata'] else {}
         )
+
+    # Skill Execution CRUD Operations
+    def create_skill_execution(self, execution_data: Dict[str, Any]) -> str:
+        """Create a new skill execution record"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                INSERT INTO skill_executions (
+                    id, skill_name, character_id, conversation_id, message_id,
+                    status, progress, started_at, result_data, performance_metrics
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                execution_data.get('id'),
+                execution_data.get('skill_name'),
+                execution_data.get('character_id'),
+                execution_data.get('conversation_id'),
+                execution_data.get('message_id'),
+                execution_data.get('status', 'pending'),
+                execution_data.get('progress', 0.0),
+                execution_data.get('started_at', datetime.now()),
+                json.dumps(execution_data.get('result_data', {}), ensure_ascii=False),
+                json.dumps(execution_data.get('performance_metrics', {}), ensure_ascii=False)
+            ))
+
+            conn.commit()
+            return execution_data.get('id')
+
+    def update_skill_execution(self, execution_id: str, update_data: Dict[str, Any]) -> bool:
+        """Update skill execution record"""
+        with self.get_connection() as conn:
+            update_fields = []
+            update_values = []
+
+            for field in ['status', 'progress', 'completed_at', 'execution_time', 'result_data',
+                         'performance_metrics', 'error_message', 'error_code']:
+                if field in update_data:
+                    update_fields.append(f"{field} = ?")
+                    if field in ['result_data', 'performance_metrics']:
+                        update_values.append(json.dumps(update_data[field], ensure_ascii=False))
+                    else:
+                        update_values.append(update_data[field])
+
+            if not update_fields:
+                return False
+
+            update_values.append(execution_id)
+            query = f"UPDATE skill_executions SET {', '.join(update_fields)} WHERE id = ?"
+
+            cursor = conn.execute(query, update_values)
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_skill_execution(self, execution_id: str) -> Optional[Dict[str, Any]]:
+        """Get skill execution by ID"""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM skill_executions WHERE id = ?",
+                (execution_id,)
+            )
+            row = cursor.fetchone()
+
+            if row:
+                return self._row_to_skill_execution(row)
+            return None
+
+    def get_skill_executions_by_conversation(self, conversation_id: int) -> List[Dict[str, Any]]:
+        """Get all skill executions for a conversation"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT * FROM skill_executions
+                WHERE conversation_id = ?
+                ORDER BY started_at DESC
+            """, (conversation_id,))
+            rows = cursor.fetchall()
+
+            return [self._row_to_skill_execution(row) for row in rows]
+
+    def get_skill_executions_by_character(self, character_id: int, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get skill executions for a character"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT * FROM skill_executions
+                WHERE character_id = ?
+                ORDER BY started_at DESC
+                LIMIT ?
+            """, (character_id, limit))
+            rows = cursor.fetchall()
+
+            return [self._row_to_skill_execution(row) for row in rows]
+
+    # Character Skill Config CRUD Operations
+    def create_character_skill_config(self, config_data: Dict[str, Any]) -> int:
+        """Create character skill configuration"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                INSERT OR REPLACE INTO character_skill_configs (
+                    character_id, skill_name, parameters, weight, threshold, priority,
+                    personalization, response_style, enabled, max_uses_per_conversation,
+                    cooldown_seconds, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                config_data.get('character_id'),
+                config_data.get('skill_name'),
+                json.dumps(config_data.get('parameters', {}), ensure_ascii=False),
+                config_data.get('weight', 1.0),
+                config_data.get('threshold', 0.5),
+                config_data.get('priority', 'medium'),
+                json.dumps(config_data.get('personalization', {}), ensure_ascii=False),
+                json.dumps(config_data.get('response_style', {}), ensure_ascii=False),
+                config_data.get('enabled', True),
+                config_data.get('max_uses_per_conversation'),
+                config_data.get('cooldown_seconds', 0.0),
+                datetime.now(),
+                datetime.now()
+            ))
+
+            config_id = cursor.lastrowid
+            conn.commit()
+            return config_id
+
+    def get_character_skill_configs(self, character_id: int) -> List[Dict[str, Any]]:
+        """Get all skill configurations for a character"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT * FROM character_skill_configs
+                WHERE character_id = ?
+                ORDER BY skill_name
+            """, (character_id,))
+            rows = cursor.fetchall()
+
+            return [self._row_to_skill_config(row) for row in rows]
+
+    def get_character_skill_config(self, character_id: int, skill_name: str) -> Optional[Dict[str, Any]]:
+        """Get specific skill configuration for a character"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                SELECT * FROM character_skill_configs
+                WHERE character_id = ? AND skill_name = ?
+            """, (character_id, skill_name))
+            row = cursor.fetchone()
+
+            if row:
+                return self._row_to_skill_config(row)
+            return None
+
+    def update_character_skill_config(self, character_id: int, skill_name: str, update_data: Dict[str, Any]) -> bool:
+        """Update character skill configuration"""
+        with self.get_connection() as conn:
+            update_fields = []
+            update_values = []
+
+            for field in ['parameters', 'weight', 'threshold', 'priority', 'personalization',
+                         'response_style', 'enabled', 'max_uses_per_conversation', 'cooldown_seconds']:
+                if field in update_data:
+                    update_fields.append(f"{field} = ?")
+                    if field in ['parameters', 'personalization', 'response_style']:
+                        update_values.append(json.dumps(update_data[field], ensure_ascii=False))
+                    else:
+                        update_values.append(update_data[field])
+
+            if not update_fields:
+                return False
+
+            update_fields.append("updated_at = ?")
+            update_values.extend([datetime.now(), character_id, skill_name])
+
+            query = f"UPDATE character_skill_configs SET {', '.join(update_fields)} WHERE character_id = ? AND skill_name = ?"
+
+            cursor = conn.execute(query, update_values)
+            conn.commit()
+            return cursor.rowcount > 0
+
+    # Skill Performance Metrics CRUD Operations
+    def create_or_update_skill_metrics(self, metrics_data: Dict[str, Any]) -> int:
+        """Create or update skill performance metrics"""
+        with self.get_connection() as conn:
+            cursor = conn.execute("""
+                INSERT OR REPLACE INTO skill_performance_metrics (
+                    skill_name, character_id, total_executions, successful_executions,
+                    failed_executions, average_execution_time, min_execution_time,
+                    max_execution_time, average_confidence_score, average_relevance_score,
+                    average_quality_score, user_satisfaction_score, positive_feedback_count,
+                    negative_feedback_count, daily_usage_count, peak_usage_time,
+                    last_updated, measurement_period_start, measurement_period_end
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                metrics_data.get('skill_name'),
+                metrics_data.get('character_id'),
+                metrics_data.get('total_executions', 0),
+                metrics_data.get('successful_executions', 0),
+                metrics_data.get('failed_executions', 0),
+                metrics_data.get('average_execution_time', 0.0),
+                metrics_data.get('min_execution_time', 0.0),
+                metrics_data.get('max_execution_time', 0.0),
+                metrics_data.get('average_confidence_score', 0.0),
+                metrics_data.get('average_relevance_score', 0.0),
+                metrics_data.get('average_quality_score', 0.0),
+                metrics_data.get('user_satisfaction_score', 0.0),
+                metrics_data.get('positive_feedback_count', 0),
+                metrics_data.get('negative_feedback_count', 0),
+                json.dumps(metrics_data.get('daily_usage_count', {}), ensure_ascii=False),
+                metrics_data.get('peak_usage_time'),
+                datetime.now(),
+                metrics_data.get('measurement_period_start', datetime.now()),
+                metrics_data.get('measurement_period_end', datetime.now())
+            ))
+
+            metrics_id = cursor.lastrowid
+            conn.commit()
+            return metrics_id
+
+    def get_skill_metrics(self, skill_name: str, character_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """Get skill performance metrics"""
+        with self.get_connection() as conn:
+            if character_id:
+                cursor = conn.execute("""
+                    SELECT * FROM skill_performance_metrics
+                    WHERE skill_name = ? AND character_id = ?
+                """, (skill_name, character_id))
+            else:
+                cursor = conn.execute("""
+                    SELECT * FROM skill_performance_metrics
+                    WHERE skill_name = ? AND character_id IS NULL
+                """, (skill_name,))
+
+            row = cursor.fetchone()
+            if row:
+                return self._row_to_skill_metrics(row)
+            return None
+
+    def get_all_skill_metrics(self, character_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Get all skill performance metrics"""
+        with self.get_connection() as conn:
+            if character_id:
+                cursor = conn.execute("""
+                    SELECT * FROM skill_performance_metrics
+                    WHERE character_id = ?
+                    ORDER BY skill_name
+                """, (character_id,))
+            else:
+                cursor = conn.execute("""
+                    SELECT * FROM skill_performance_metrics
+                    ORDER BY skill_name
+                """)
+
+            rows = cursor.fetchall()
+            return [self._row_to_skill_metrics(row) for row in rows]
+
+    # Helper methods for skill data conversion
+    def _row_to_skill_execution(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Convert database row to skill execution dict"""
+        return {
+            'id': row['id'],
+            'skill_name': row['skill_name'],
+            'character_id': row['character_id'],
+            'conversation_id': row['conversation_id'],
+            'message_id': row['message_id'],
+            'status': row['status'],
+            'progress': row['progress'],
+            'started_at': datetime.fromisoformat(row['started_at']) if row['started_at'] else None,
+            'completed_at': datetime.fromisoformat(row['completed_at']) if row['completed_at'] else None,
+            'execution_time': row['execution_time'],
+            'result_data': json.loads(row['result_data']) if row['result_data'] else {},
+            'performance_metrics': json.loads(row['performance_metrics']) if row['performance_metrics'] else {},
+            'error_message': row['error_message'],
+            'error_code': row['error_code']
+        }
+
+    def _row_to_skill_config(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Convert database row to skill config dict"""
+        return {
+            'id': row['id'],
+            'character_id': row['character_id'],
+            'skill_name': row['skill_name'],
+            'parameters': json.loads(row['parameters']) if row['parameters'] else {},
+            'weight': row['weight'],
+            'threshold': row['threshold'],
+            'priority': row['priority'],
+            'personalization': json.loads(row['personalization']) if row['personalization'] else {},
+            'response_style': json.loads(row['response_style']) if row['response_style'] else {},
+            'enabled': bool(row['enabled']),
+            'max_uses_per_conversation': row['max_uses_per_conversation'],
+            'cooldown_seconds': row['cooldown_seconds'],
+            'created_at': datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
+            'updated_at': datetime.fromisoformat(row['updated_at']) if row['updated_at'] else None
+        }
+
+    def _row_to_skill_metrics(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """Convert database row to skill metrics dict"""
+        return {
+            'id': row['id'],
+            'skill_name': row['skill_name'],
+            'character_id': row['character_id'],
+            'total_executions': row['total_executions'],
+            'successful_executions': row['successful_executions'],
+            'failed_executions': row['failed_executions'],
+            'average_execution_time': row['average_execution_time'],
+            'min_execution_time': row['min_execution_time'],
+            'max_execution_time': row['max_execution_time'],
+            'average_confidence_score': row['average_confidence_score'],
+            'average_relevance_score': row['average_relevance_score'],
+            'average_quality_score': row['average_quality_score'],
+            'user_satisfaction_score': row['user_satisfaction_score'],
+            'positive_feedback_count': row['positive_feedback_count'],
+            'negative_feedback_count': row['negative_feedback_count'],
+            'daily_usage_count': json.loads(row['daily_usage_count']) if row['daily_usage_count'] else {},
+            'peak_usage_time': row['peak_usage_time'],
+            'last_updated': datetime.fromisoformat(row['last_updated']) if row['last_updated'] else None,
+            'measurement_period_start': datetime.fromisoformat(row['measurement_period_start']) if row['measurement_period_start'] else None,
+            'measurement_period_end': datetime.fromisoformat(row['measurement_period_end']) if row['measurement_period_end'] else None
+        }
