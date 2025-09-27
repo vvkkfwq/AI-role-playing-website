@@ -64,6 +64,7 @@ AI-role-playing-website/
 │   ├── test_tts.py      # TTS 服务测试
 │   └── __init__.py
 ├── docs/                 # 技术文档
+│   ├── SKILL_SYSTEM_GUIDE.md    # AI智能技能系统完整开发指南
 │   ├── DATABASE_README.md     # 数据库设计文档
 │   ├── STT_INTEGRATION_GUIDE.md  # STT 集成指南
 │   └── TTS_INTEGRATION_GUIDE.md  # TTS 集成指南
@@ -222,6 +223,15 @@ streamlit run app/main.py
 
 详细的数据库设计请参考 [docs/DATABASE_README.md](docs/DATABASE_README.md)
 
+## 📖 技术文档
+
+### 完整开发指南
+
+- **[AI 智能技能系统开发指南](docs/SKILL_SYSTEM_GUIDE.md)** - 完整的技能系统架构、开发和集成指南
+- **[数据库设计文档](docs/DATABASE_README.md)** - 数据模型和 CRUD 操作详解
+- **[STT 集成指南](docs/STT_INTEGRATION_GUIDE.md)** - 语音转文字功能集成
+- **[TTS 集成指南](docs/TTS_INTEGRATION_GUIDE.md)** - 文字转语音功能集成
+
 ## 🛠️ 开发和测试
 
 ### 运行测试
@@ -358,6 +368,7 @@ db = DatabaseManager("custom/path/database.db")
 如果您遇到问题或有建议，请：
 
 1. 查看技术文档：
+   - [docs/SKILL_SYSTEM_GUIDE.md](docs/SKILL_SYSTEM_GUIDE.md) - AI 智能技能系统完整指南
    - [docs/DATABASE_README.md](docs/DATABASE_README.md) - 数据库相关问题
    - [docs/STT_INTEGRATION_GUIDE.md](docs/STT_INTEGRATION_GUIDE.md) - 语音转文本集成
    - [docs/TTS_INTEGRATION_GUIDE.md](docs/TTS_INTEGRATION_GUIDE.md) - 文本转语音集成

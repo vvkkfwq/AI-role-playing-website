@@ -1,30 +1,98 @@
-# AI 角色扮演网站 - 智能技能系统 v2.0 功能更新文档
+# AI 智能技能系统开发指南
 
-## 📋 版本信息
+## 🎯 技能系统概述
 
-- **版本号**: v2.0.0
-- **发布日期**: 2025-09-27
-- **更新类型**: 重大功能更新
-- **兼容性**: 向后兼容，保持原有所有功能
+AI 智能技能系统是本项目的核心创新功能，通过动态技能匹配、意图识别和情感分析，为每个 AI 角色提供个性化的认知能力。该系统将静态的角色对话升级为智能、动态、情感化的交互体验。
 
----
+## 🚀 核心功能架构
 
-## 🎯 更新概述
+### 技能系统核心组件
 
-本次更新为 AI 角色扮演网站引入了全新的**智能技能系统**，这是一个革命性的 AI 增强框架，将静态的角色对话升级为动态、智能、个性化的交互体验。通过先进的意图识别、技能匹配和角色适配技术，每个 AI 角色现在都具备了专属的认知能力和思维模式。
-
----
-
-## 🚀 核心新功能
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                   AI智能技能系统架构                          │
+├─────────────────────────────────────────────────────────────┤
+│                 技能管理层 (Skill Management)                 │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐  │
+│  │   技能注册表     │  │   技能管理器     │  │   执行引擎    │  │
+│  │ SkillRegistry   │  │ SkillManager    │  │ Executor     │  │
+│  │ - 技能发现       │  │ - 智能调度       │  │ - 异步执行    │  │
+│  │ - 依赖验证       │  │ - 上下文管理     │  │ - 性能监控    │  │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│                 智能分析层 (Intelligence)                     │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐  │
+│  │   意图识别器     │  │   技能匹配器     │  │   推荐引擎    │  │
+│  │ IntentClassifier│  │ SkillMatcher    │  │ Recommender  │  │
+│  │ - 多维度分析     │  │ - 智能评分       │  │ - 主动推荐    │  │
+│  │ - 情感识别       │  │ - 角色适配       │  │ - 学习优化    │  │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│                   技能执行层 (Skills)                         │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐  │
+│  │   对话技能       │  │   知识技能       │  │   创意技能    │  │
+│  │ - 情感支持       │  │ - 深度分析       │  │ - 故事创作    │  │
+│  │ - 深度提问       │  │ - 逻辑推理       │  │ - 创意写作    │  │
+│  │ - 引导思考       │  │ - 科学思维       │  │ - 头脑风暴    │  │
+│  └─────────────────┘  └─────────────────┘  └──────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ### 1. 智能技能管理系统
 
 #### 1.1 自动技能发现与注册
 
-- **技能自动扫描**: 系统启动时自动扫描并注册所有可用技能
-- **热插拔支持**: 支持运行时动态加载新技能，无需重启应用
-- **依赖验证**: 自动检查技能依赖关系，确保系统稳定性
-- **版本管理**: 支持技能版本控制和升级机制
+**技能自动扫描机制:**
+
+```python
+# 技能自动发现流程
+class SkillRegistry:
+    def auto_discover_skills(self, skill_dirs: List[str]):
+        """自动扫描并注册技能"""
+        for skill_dir in skill_dirs:
+            # 递归扫描技能目录
+            for skill_file in Path(skill_dir).rglob("*_skill.py"):
+                try:
+                    # 动态导入技能模块
+                    skill_module = importlib.import_module(skill_file.stem)
+
+                    # 查找技能类
+                    for item in dir(skill_module):
+                        item_obj = getattr(skill_module, item)
+                        if (isinstance(item_obj, type) and
+                            issubclass(item_obj, SkillBase) and
+                            item_obj != SkillBase):
+
+                            # 注册技能
+                            self.register_skill(item_obj)
+
+                except Exception as e:
+                    logger.warning(f"技能加载失败 {skill_file}: {e}")
+
+# 当前已注册技能统计
+✅ 已注册技能总数: 4
+📊 分类分布:
+   - conversation: 3 (情感支持、深度提问、故事创作)
+   - knowledge: 1 (多角度分析)
+🎭 角色配置: 3个角色的专属配置
+```
+
+**技能依赖验证:**
+
+```python
+def validate_skill_dependencies(self) -> List[str]:
+    """验证技能依赖关系"""
+    errors = []
+    for skill_name, skill_class in self.skills.items():
+        metadata = skill_class.get_metadata()
+
+        # 检查依赖技能是否存在
+        for dependency in metadata.dependencies:
+            if dependency not in self.skills:
+                errors.append(f"技能 {skill_name} 依赖的 {dependency} 不存在")
+
+    return errors
+```
 
 ```python
 # 技能注册统计
@@ -49,21 +117,21 @@
 
 系统支持 16 种专业意图类型，覆盖 4 大核心领域：
 
-**📞 沟通交流类**
+##### 📞 沟通交流类
 
 - `greeting`: 问候交流
 - `casual_chat`: 日常闲聊
 - `emotional_support`: 情感支持
 - `storytelling`: 故事叙述
 
-**🧠 知识探索类**
+##### 🧠 知识探索类
 
 - `analysis`: 深度分析
 - `explanation`: 概念解释
 - `comparison`: 对比分析
 - `learning`: 学习指导
 
-**🎨 创意表达类**
+##### 🎨 创意表达类
 
 - `creative_writing`: 创意写作
 - `brainstorming`: 头脑风暴
@@ -206,7 +274,7 @@
 
 #### 5.1 系统状态面板
 
-```
+```text
 ⚡ 智能技能系统
 🟢 技能系统已启用
 
@@ -417,45 +485,280 @@ quality_score = 结构化程度 + 内容深度 + 逻辑性 + 长度适宜性
 
 ---
 
-## 🔧 开发者功能
+## 🔧 开发者指南
 
 ### 技能开发 SDK
 
-**📦 标准化接口**
+#### 标准化技能开发接口
 
 ```python
+from skills.core.base import SkillBase
+from skills.core.models import SkillMetadata, SkillContext, SkillConfig, SkillResult
+from skills.core.models import SkillCategory, SkillTrigger, SkillPriority
+
 class CustomSkill(SkillBase):
     """自定义技能开发模板"""
 
     @classmethod
     def get_metadata(cls) -> SkillMetadata:
-        """技能元数据定义"""
-        pass
+        """定义技能元数据"""
+        return SkillMetadata(
+            name="custom_skill",
+            display_name="自定义技能",
+            description="这是一个自定义技能示例",
+            category=SkillCategory.CONVERSATION,
+            triggers=SkillTrigger(
+                keywords=["关键词1", "关键词2"],
+                patterns=[r".*模式.*"],
+                intent_types=["custom_intent"],
+                emotional_states=["neutral"]
+            ),
+            priority=SkillPriority.MEDIUM,
+            character_compatibility=["通用"],
+            max_execution_time=10.0
+        )
 
     def can_handle(self, context: SkillContext, config: SkillConfig) -> bool:
-        """技能适用性判断"""
-        pass
+        """判断技能是否能处理当前请求"""
+        user_input = context.user_input.lower()
+
+        # 检查关键词
+        keywords = self.metadata.triggers.keywords
+        has_keywords = any(keyword in user_input for keyword in keywords)
+
+        # 检查其他条件
+        return has_keywords
+
+    def get_confidence_score(self, context: SkillContext, config: SkillConfig) -> float:
+        """计算技能置信度评分"""
+        score = 0.0
+
+        # 基于关键词匹配
+        user_input = context.user_input.lower()
+        keyword_matches = sum(1 for kw in self.metadata.triggers.keywords if kw in user_input)
+        score += min(keyword_matches * 0.3, 0.8)
+
+        # 基于角色匹配
+        if context.character:
+            character_name = context.character.get("name", "")
+            if character_name in self.metadata.character_compatibility:
+                score += 0.2
+
+        return min(score, 1.0)
 
     async def execute(self, context: SkillContext, config: SkillConfig) -> SkillResult:
-        """技能执行逻辑"""
-        pass
+        """执行技能逻辑"""
+        try:
+            # 技能执行逻辑
+            result_content = self._generate_response(context, config)
+
+            # 计算质量指标
+            confidence = self.get_confidence_score(context, config)
+            quality_score = self._assess_quality(result_content, context)
+            relevance_score = self._assess_relevance(result_content, context)
+
+            return SkillResult(
+                skill_name=self.metadata.name,
+                execution_id=f"exec_{int(time.time())}",
+                status=SkillExecutionStatus.COMPLETED,
+                generated_content=result_content,
+                confidence_score=confidence,
+                quality_score=quality_score,
+                relevance_score=relevance_score,
+                execution_time=1.5,
+                result_data={
+                    "custom_data": "示例数据",
+                    "processing_method": "custom_method"
+                }
+            )
+
+        except Exception as e:
+            return SkillResult(
+                skill_name=self.metadata.name,
+                execution_id=f"exec_{int(time.time())}",
+                status=SkillExecutionStatus.FAILED,
+                error_message=str(e),
+                execution_time=0.0
+            )
+
+    def _generate_response(self, context: SkillContext, config: SkillConfig) -> str:
+        """生成技能响应内容"""
+        # 实现具体的响应生成逻辑
+        return f"这是针对 '{context.user_input}' 的自定义响应"
+
+    def _assess_quality(self, content: str, context: SkillContext) -> float:
+        """评估响应质量"""
+        # 实现质量评估逻辑
+        return 0.8
+
+    def _assess_relevance(self, content: str, context: SkillContext) -> float:
+        """评估响应相关性"""
+        # 实现相关性评估逻辑
+        return 0.9
 ```
 
-**🛠️ 开发工具**
+#### 技能开发最佳实践
 
-- 技能模板生成器
-- 本地测试框架
-- 性能分析工具
-- 调试日志系统
+**1. 技能命名规范:**
 
-### 扩展性设计
+```python
+# 文件命名: skills/custom/my_custom_skill.py
+# 类命名: MyCustomSkill
+# 技能名称: "my_custom_skill"
+# 显示名称: "我的自定义技能"
+```
 
-**🔌 插件化架构**
+**2. 性能优化建议:**
 
-- 热插拔技能加载
-- 动态配置更新
-- 第三方技能集成
-- API 扩展接口
+```python
+class OptimizedSkill(SkillBase):
+    def __init__(self):
+        # 预计算常用数据
+        self.cached_data = self._precompute_data()
+
+    async def execute(self, context: SkillContext, config: SkillConfig) -> SkillResult:
+        # 使用异步操作
+        async with aiohttp.ClientSession() as session:
+            # 网络请求或其他异步操作
+            pass
+
+        # 利用缓存数据
+        result = self._process_with_cache(context, self.cached_data)
+        return result
+```
+
+**3. 错误处理模式:**
+
+```python
+def robust_skill_execution(self, context: SkillContext, config: SkillConfig) -> SkillResult:
+    try:
+        # 主要逻辑
+        return self._main_execution(context, config)
+
+    except ValidationError as e:
+        # 输入验证错误
+        return self._create_error_result("INPUT_VALIDATION", str(e))
+
+    except TimeoutError as e:
+        # 超时错误
+        return self._create_error_result("TIMEOUT", "技能执行超时")
+
+    except Exception as e:
+        # 通用错误
+        logger.exception(f"技能执行失败: {e}")
+        return self._create_error_result("UNKNOWN", "技能执行异常")
+```
+
+### 开发工具链
+
+#### 技能测试框架
+
+```python
+# 技能单元测试示例
+import pytest
+from skills.custom.my_custom_skill import MyCustomSkill
+from skills.core.models import SkillContext, SkillConfig
+
+class TestMyCustomSkill:
+    @pytest.fixture
+    def skill(self):
+        return MyCustomSkill()
+
+    @pytest.fixture
+    def context(self):
+        return SkillContext(
+            user_input="测试输入",
+            character={"name": "测试角色"},
+            request_id="test_request"
+        )
+
+    @pytest.fixture
+    def config(self):
+        return SkillConfig(skill_name="my_custom_skill")
+
+    def test_can_handle(self, skill, context, config):
+        """测试技能是否能处理请求"""
+        result = skill.can_handle(context, config)
+        assert isinstance(result, bool)
+
+    def test_confidence_score(self, skill, context, config):
+        """测试置信度计算"""
+        score = skill.get_confidence_score(context, config)
+        assert 0.0 <= score <= 1.0
+
+    @pytest.mark.asyncio
+    async def test_execute(self, skill, context, config):
+        """测试技能执行"""
+        result = await skill.execute(context, config)
+        assert result.skill_name == "my_custom_skill"
+        assert result.status in ["completed", "failed"]
+```
+
+#### 性能分析工具
+
+```python
+# 技能性能分析
+from skills.monitoring.performance import SkillPerformanceAnalyzer
+
+analyzer = SkillPerformanceAnalyzer()
+
+# 分析特定技能性能
+metrics = analyzer.analyze_skill("my_custom_skill", days=7)
+print(f"平均执行时间: {metrics.avg_execution_time:.2f}秒")
+print(f"成功率: {metrics.success_rate:.1%}")
+print(f"用户满意度: {metrics.user_satisfaction:.1f}/5.0")
+```
+
+### 扩展性架构
+
+#### 插件化技能加载
+
+```python
+# 动态技能插件系统
+class SkillPlugin:
+    def __init__(self, skill_path: str):
+        self.skill_path = skill_path
+        self.skill_class = None
+
+    def load(self):
+        """动态加载技能"""
+        spec = importlib.util.spec_from_file_location("skill_module", self.skill_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        # 查找技能类
+        for item_name in dir(module):
+            item = getattr(module, item_name)
+            if isinstance(item, type) and issubclass(item, SkillBase):
+                self.skill_class = item
+                break
+
+    def unload(self):
+        """卸载技能"""
+        self.skill_class = None
+
+# 插件管理器
+class SkillPluginManager:
+    def __init__(self):
+        self.plugins = {}
+
+    def install_plugin(self, plugin_path: str):
+        """安装技能插件"""
+        plugin = SkillPlugin(plugin_path)
+        plugin.load()
+
+        if plugin.skill_class:
+            skill_name = plugin.skill_class.get_metadata().name
+            self.plugins[skill_name] = plugin
+            skill_registry.register_skill(plugin.skill_class)
+
+    def uninstall_plugin(self, skill_name: str):
+        """卸载技能插件"""
+        if skill_name in self.plugins:
+            self.plugins[skill_name].unload()
+            del self.plugins[skill_name]
+            skill_registry.unregister_skill(skill_name)
+```
 
 ---
 
