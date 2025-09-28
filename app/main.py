@@ -865,11 +865,17 @@ class AIRolePlayApp:
             # Fill the text input with recognized text
             st.session_state.text_input_value = stt_result.text
 
+            # Force input refresh by updating key
+            st.session_state.input_key += 1
+
             # Record statistics
             stt_service.stats_manager.record_request(stt_result, user_edited=False)
 
             # Show success message
-            st.success("语音识别成功!")
+            st.success(f"语音识别成功: {stt_result.text}")
+
+            # Force page rerun to update input field
+            st.rerun()
         else:
             st.warning("未能识别出音频内容")
 
