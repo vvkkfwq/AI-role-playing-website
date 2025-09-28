@@ -43,10 +43,23 @@ load_dotenv()
 class AIRolePlayApp:
     def __init__(self):
         self.db = DatabaseManager()
+        self.ensure_characters_exist()  # Ensure characters exist for cloud deployment
         self.init_openai()
         self.init_session_state()
         self.init_audio_cleanup()
         self.init_skill_system()
+
+    def ensure_characters_exist(self):
+        """Ensure preset characters exist in database for cloud deployment"""
+        try:
+            characters = self.db.get_all_characters()
+            if not characters:
+                print("No characters found, initializing preset characters...")
+                from config.preset_characters import populate_preset_characters
+                characters = populate_preset_characters(self.db)
+                print(f"Initialized {len(characters)} preset characters")
+        except Exception as e:
+            print(f"Warning: Could not initialize characters: {e}")
 
     def init_openai(self):
         api_key = os.getenv("OPENAI_API_KEY")
