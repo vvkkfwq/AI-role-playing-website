@@ -43,11 +43,81 @@ load_dotenv()
 class AIRolePlayApp:
     def __init__(self):
         self.db = DatabaseManager()
-        self.ensure_characters_exist()  # Ensure characters exist for cloud deployment
+
+        # Check if this is a new session and initialize if needed
+        if "session_initialized" not in st.session_state:
+            self.initialize_fresh_session()
+            st.session_state.session_initialized = True
+        else:
+            self.ensure_characters_exist()  # Ensure characters exist for cloud deployment
+
         self.init_openai()
         self.init_session_state()
         self.init_audio_cleanup()
         self.init_skill_system()
+
+    def initialize_fresh_session(self):
+        """Initialize a fresh session with reset database and clean caches"""
+        print("🎭 Initializing fresh session for new user...")
+
+        try:
+            # Import subprocess for calling initialization script
+            import subprocess
+            from pathlib import Path
+
+            # Get project root directory
+            project_root = Path(__file__).parent.parent
+            init_script = project_root / "scripts" / "init_database.py"
+
+            if init_script.exists():
+                # Call the initialization script with reset and sample data
+                result = subprocess.run([
+                    "python", str(init_script), "--reset", "--sample-data"
+                ], capture_output=True, text=True, cwd=project_root)
+
+                if result.returncode == 0:
+                    print("✅ Database reset and initialized with sample data")
+                else:
+                    print(f"⚠️  Database initialization warning: {result.stderr}")
+                    # Continue with fallback initialization
+                    self.ensure_characters_exist()
+            else:
+                print("⚠️  Init script not found, using fallback initialization")
+                self.ensure_characters_exist()
+
+            # Clear audio caches
+            self.clear_audio_caches()
+
+            print("🎉 Fresh session initialization completed!")
+
+        except Exception as e:
+            print(f"❌ Fresh session initialization failed: {e}")
+            # Fallback to ensure basic characters exist
+            self.ensure_characters_exist()
+
+    def clear_audio_caches(self):
+        """Clear all audio cache directories for fresh session"""
+        try:
+            from pathlib import Path
+            import shutil
+
+            # Clear audio_temp directory
+            audio_temp_dir = Path("audio_temp")
+            if audio_temp_dir.exists():
+                shutil.rmtree(audio_temp_dir)
+                audio_temp_dir.mkdir(exist_ok=True)
+                print("🧹 Cleared audio_temp directory")
+
+            # Clear TTS cache using the TTS service
+            try:
+                from services.tts_service import tts_manager
+                cleared_count = tts_manager.tts_service.clear_cache()
+                print(f"🧹 Cleared {cleared_count} TTS cache files")
+            except Exception as e:
+                print(f"⚠️  Could not clear TTS cache: {e}")
+
+        except Exception as e:
+            print(f"⚠️  Audio cache cleanup failed: {e}")
 
     def ensure_characters_exist(self):
         """Ensure preset characters exist in database for cloud deployment"""
