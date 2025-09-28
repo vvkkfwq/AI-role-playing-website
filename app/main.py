@@ -508,9 +508,9 @@ class AIRolePlayApp:
                 st.markdown("### 🎤 语音识别设置")
 
                 # STT enable/disable
-                st.session_state.stt_enabled = st.toggle(
+                st.toggle(
                     "启用语音识别",
-                    value=st.session_state.stt_enabled,
+                    key="stt_enabled",
                     help="开启后录音将自动转换为文字",
                 )
 
@@ -528,8 +528,11 @@ class AIRolePlayApp:
                         index=list(language_options.values()).index(
                             st.session_state.stt_language
                         ),
+                        key="stt_language_select"
                     )
-                    st.session_state.stt_language = language_options[selected_lang]
+                    # Update session state when selection changes
+                    if selected_lang:
+                        st.session_state.stt_language = language_options[selected_lang]
 
                 st.markdown("---")
 
@@ -537,35 +540,33 @@ class AIRolePlayApp:
                 st.markdown("### 🎙️ 语音合成设置")
 
                 # TTS enable/disable
-                st.session_state.tts_enabled = st.toggle(
+                st.toggle(
                     "启用语音合成",
-                    value=st.session_state.tts_enabled,
+                    key="tts_enabled",
                     help="开启后AI回复将生成语音",
                 )
 
                 if st.session_state.tts_enabled:
                     # Auto-generate speech option
-                    st.session_state.tts_auto_play = st.checkbox(
+                    st.checkbox(
                         "自动生成语音",
-                        value=st.session_state.tts_auto_play,
+                        key="tts_auto_play",
                         help="AI回复后自动生成语音文件",
                     )
 
                     # Advanced TTS settings
                     with st.expander("高级设置", expanded=False):
-                        st.session_state.tts_model = st.selectbox(
+                        st.selectbox(
                             "TTS模型",
                             options=["tts-1-hd", "tts-1"],
-                            index=0 if st.session_state.tts_model == "tts-1-hd" else 1,
+                            key="tts_model",
                             help="tts-1-hd: 高质量, tts-1: 快速",
                         )
 
-                        st.session_state.tts_format = st.selectbox(
+                        st.selectbox(
                             "音频格式",
                             options=["mp3", "opus", "aac"],
-                            index=["mp3", "opus", "aac"].index(
-                                st.session_state.tts_format
-                            ),
+                            key="tts_format",
                             help="不同格式的音质和大小有所差异",
                         )
 
