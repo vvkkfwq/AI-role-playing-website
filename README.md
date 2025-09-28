@@ -8,6 +8,14 @@
 
 🎥 **[点击观看完整演示视频](https://www.bilibili.com/video/BV1zRnRzdEzM/?vd_source=3923d16817f4b6297bf0f127800f2cc0)**
 
+### 🚀 在线体验
+
+🌐 **[立即体验在线 Demo](https://ai-role-playing-website-h3bqzpu4zgaqkdhappkem5x.streamlit.app/)**
+
+- 无需安装，直接使用
+- 支持语音输入输出
+- 与哈利·波特、苏格拉底、爱因斯坦实时对话
+
 ## ✨ 功能特色
 
 - 🎭 **多角色扮演**: 预设 3 个经典角色（哈利·波特、苏格拉底、爱因斯坦）
