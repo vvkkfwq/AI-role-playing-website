@@ -323,6 +323,11 @@ class TTSPlaybackUI:
             if st.button("🔊 重播", key=f"replay_tts_{key_suffix}"):
                 st.rerun()
 
+            # Auto-generated indicator
+            if audio_metadata.get("auto_generated"):
+                st.markdown("🤖 **自动生成**")
+                st.caption("已自动生成语音文件")
+
             if audio_metadata.get("cached"):
                 cache_status = "💾 已缓存"
                 if audio_metadata.get("cache_hit"):
@@ -418,9 +423,9 @@ class TTSPlaybackUI:
                 )
 
                 auto_play = st.checkbox(
-                    "自动播放",
+                    "自动生成语音",
                     value=False,
-                    help="AI回复后自动播放语音"
+                    help="AI回复后自动生成语音文件"
                 )
 
         return {

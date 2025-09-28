@@ -2,6 +2,12 @@
 
 基于 Streamlit 和 OpenAI 构建的网页版 AI 角色扮演聊天应用，采用 Pydantic 数据模型和 SQLite 数据库，支持语音输入和语音合成功能。
 
+## Demo 演示地址
+
+[![AI角色扮演聊天系统演示](http://i0.hdslb.com/bfs/archive/7603c00990eebfbc3461bbdb172fd7ece2ffc779.jpg)](https://www.bilibili.com/video/BV1zRnRzdEzM/?vd_source=3923d16817f4b6297bf0f127800f2cc0)
+
+🎥 **[点击观看完整演示视频](https://www.bilibili.com/video/BV1zRnRzdEzM/?vd_source=3923d16817f4b6297bf0f127800f2cc0)**
+
 ## ✨ 功能特色
 
 - 🎭 **多角色扮演**: 预设 3 个经典角色（哈利·波特、苏格拉底、爱因斯坦）

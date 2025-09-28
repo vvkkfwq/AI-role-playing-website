@@ -290,6 +290,24 @@ class AIRolePlayApp:
 
             # Remove cursor and display final response
             placeholder.markdown(full_response)
+
+            # Auto-generate TTS if auto-play is enabled
+            if st.session_state.tts_enabled and st.session_state.tts_auto_play and full_response.strip():
+                # Generate TTS audio for auto-play
+                tts_audio = tts_manager.generate_character_speech(
+                    text=full_response,
+                    character=character,
+                    show_progress=False,
+                    use_cache=True,
+                )
+
+                # Store in session state for immediate display
+                if tts_audio:
+                    tts_key = f"tts_auto_{hash(full_response)}"
+                    st.session_state[f"tts_audio_{tts_key}"] = tts_audio
+                    # Mark as auto-generated for UI indicators
+                    tts_audio["auto_generated"] = True
+
             return full_response
 
         except Exception as e:
@@ -526,11 +544,11 @@ class AIRolePlayApp:
                 )
 
                 if st.session_state.tts_enabled:
-                    # Auto-play option
+                    # Auto-generate speech option
                     st.session_state.tts_auto_play = st.checkbox(
-                        "自动播放",
+                        "自动生成语音",
                         value=st.session_state.tts_auto_play,
-                        help="AI回复后自动播放语音",
+                        help="AI回复后自动生成语音文件",
                     )
 
                     # Advanced TTS settings
@@ -856,21 +874,46 @@ class AIRolePlayApp:
 
         # Check if TTS audio already exists in session state
         tts_cache_key = f"tts_audio_{tts_key}"
+        auto_tts_key = f"tts_audio_tts_auto_{hash(text)}"  # Check for auto-generated TTS
+
+        # Check if auto-generated TTS exists first
+        if auto_tts_key in st.session_state:
+            # Use auto-generated TTS and move it to the proper key
+            tts_audio = st.session_state[auto_tts_key]
+            st.session_state[tts_cache_key] = tts_audio
+            # Clean up auto key to prevent duplicates
+            del st.session_state[auto_tts_key]
 
         if tts_cache_key not in st.session_state:
-            # Generate TTS button
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                if st.button("🎵 生成语音", key=f"gen_{tts_key}"):
-                    with st.spinner("正在生成语音..."):
-                        tts_audio = tts_manager.generate_character_speech(
-                            text=text,
-                            character=character,
-                            show_progress=False,
-                            use_cache=True,
-                        )
+            # Check if auto-play is enabled - if so, automatically generate TTS
+            if st.session_state.tts_enabled and st.session_state.tts_auto_play:
+                with st.spinner("🎵 自动生成语音中..."):
+                    tts_audio = tts_manager.generate_character_speech(
+                        text=text,
+                        character=character,
+                        show_progress=False,
+                        use_cache=True,
+                    )
+                    if tts_audio:
+                        tts_audio["auto_generated"] = True  # Mark as auto-generated
                         st.session_state[tts_cache_key] = tts_audio
                         st.rerun()
+            else:
+                # Manual TTS generation button
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    if st.button("🎵 生成语音", key=f"gen_{tts_key}"):
+                        with st.spinner("正在生成语音..."):
+                            tts_audio = tts_manager.generate_character_speech(
+                                text=text,
+                                character=character,
+                                show_progress=False,
+                                use_cache=True,
+                            )
+                            if tts_audio:
+                                tts_audio["auto_generated"] = False  # Mark as manually generated
+                                st.session_state[tts_cache_key] = tts_audio
+                                st.rerun()
         else:
             # Display TTS player
             tts_audio = st.session_state[tts_cache_key]
